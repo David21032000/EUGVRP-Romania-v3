@@ -1,9 +1,8 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ChannelType, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ChannelType, PermissionsBitField, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const http = require('http');
 
 // --- MINI SERVER PENTRU RAILWAY ---
-// Railway necesită un port deschis pentru serviciile web, altfel dă crash.
 http.createServer((req, res) => {
     res.write("EUGVRP Bot is online!");
     res.end();
@@ -14,7 +13,8 @@ const ROLES = {
     SESSION_HOST: '1392137660117549056',
     POLITIE: '1392135802053722222',
     POMPIERI: '1392137836412665948',
-    DOT: '1392138933336543252'
+    DOT: '1392138933336543252',
+    EARLY_ACCESS: '1456269750605709372' // Rolul adăugat nou
 };
 
 const CHANNELS = {
@@ -24,10 +24,10 @@ const CHANNELS = {
 };
 
 // --- BAZE DE DATE IN-MEMORY ---
-// Toate datele se vor reseta dacă botul se oprește (cum ai cerut)
 const sessionData = { active: false, host: null, link: null, startTime: null, shiftsCount: 0, activeMembers: new Set() };
-const activeShifts = new Map(); // key: userID, value: { dept, startTime, embedMsgId }
-const userStats = new Map(); // key: userID, value: { shifts: number, totalTime: number, dept: string }
+const activeShifts = new Map(); 
+const userStats = new Map(); 
+const sessionVotes = new Set(); // Stocăm ID-urile celor care au votat DA la sesiune
 
 // --- INITIALIZARE CLIENT ---
 const client = new Client({
@@ -53,6 +53,7 @@ const commands = [
         .addStringOption(opt => opt.setName('link').setDescription('Link către serverul privat Roblox').setRequired(true)),
     new SlashCommandBuilder().setName('sesiune_stop').setDescription('Oprește sesiunea curentă RP.'),
     new SlashCommandBuilder().setName('sesiune_status').setDescription('Vezi statusul sesiunii curente.'),
+    new SlashCommandBuilder().setName('sesiune_vote').setDescription('Anunță pregătirea unei sesiuni și strânge voturi. (Doar Session Host)'),
     
     // Ture
     new SlashCommandBuilder().setName('tura_start').setDescription('Începe tura în departamentul tău.'),
@@ -89,6 +90,7 @@ client.on('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     try {
         console.log('Se încarcă comenzile (/) ...');
+        // Aici poți pune Route per-Guild dacă vrei să se încarce instantaneu
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
         console.log('Comenzile au fost încărcate!');
     } catch (error) {
@@ -96,12 +98,99 @@ client.on('ready', async () => {
     }
 });
 
+// INTERCEPTEAZĂ BUTOANELE
 client.on('interactionCreate', async interaction => {
+    if (interaction.isButton()) {
+        const { customId, member } = interaction;
+
+        // BUTON: Obține Link Sesiune (Doar roluri permise)
+        if (customId === 'get_server_link') {
+            if (!sessionData.active) {
+                return interaction.reply({ content: 'Nu există nicio sesiune activă momentan!', ephemeral: true });
+            }
+
+            // Verificare Roluri
+            const allowedRoles = [ROLES.SESSION_HOST, ROLES.POLITIE, ROLES.POMPIERI, ROLES.DOT, ROLES.EARLY_ACCESS];
+            const hasAccess = allowedRoles.some(role => member.roles.cache.has(role));
+
+            if (hasAccess) {
+                // Dacă are acces, îi trimitem link-ul ca buton de browser (URL) doar pentru el
+                const linkRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setLabel('Intră pe Serverul Roblox')
+                        .setStyle(ButtonStyle.Link)
+                        .setURL(sessionData.link)
+                );
+                return interaction.reply({ content: '✅ Ai acces! Apasă pe butonul de mai jos pentru a deschide jocul.', components: [linkRow], ephemeral: true });
+            } else {
+                return interaction.reply({ content: '❌ Acces respins! Deocamdată, doar membrii cu **Early Access** sau din **Facțiuni (Poliție, Pompieri, DOT)** pot obține link-ul.', ephemeral: true });
+            }
+        }
+
+        // BUTON: Votare Sesiune (Vot DA)
+        if (customId === 'vote_yes') {
+            if (sessionVotes.has(interaction.user.id)) {
+                return interaction.reply({ content: 'Ai votat deja că participi!', ephemeral: true });
+            }
+            sessionVotes.add(interaction.user.id); // Îl adăugăm în lista de votanți
+
+            // Actualizăm numărul de voturi direct pe mesajul embed (în timp real)
+            const msg = interaction.message;
+            const embed = EmbedBuilder.from(msg.embeds[0]);
+            embed.data.fields[0].value = `${sessionVotes.size} membri`; // Update field-ul cu voturi
+
+            await msg.edit({ embeds: [embed] });
+            return interaction.reply({ content: '✅ Votul tău a fost înregistrat cu succes!', ephemeral: true });
+        }
+
+        // BUTON: Vezi Votanți (Doar Session Host)
+        if (customId === 'view_voters') {
+            if (!member.roles.cache.has(ROLES.SESSION_HOST)) {
+                return interaction.reply({ content: '❌ Doar un Session Host poate vedea lista de votanți.', ephemeral: true });
+            }
+
+            if (sessionVotes.size === 0) {
+                return interaction.reply({ content: 'Nimeni nu a votat momentan.', ephemeral: true });
+            }
+
+            // Generăm o listă cu toți cei care au votat (mentionându-i)
+            const votersList = Array.from(sessionVotes).map(id => `<@${id}>`).join('\n');
+            return interaction.reply({ content: `**📋 Jucători care au votat că participă (${sessionVotes.size}):**\n${votersList}`, ephemeral: true });
+        }
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
     const { commandName, user, member, guild } = interaction;
 
     try {
         // =============== SISTEM SESIUNE ===============
+        
+        // COMANDĂ NOUĂ: /sesiune_vote
+        if (commandName === 'sesiune_vote') {
+            if (!member.roles.cache.has(ROLES.SESSION_HOST)) {
+                return interaction.reply({ content: 'Nu ai permisiunea de a folosi această comandă.', ephemeral: true });
+            }
+
+            sessionVotes.clear(); // Resetăm voturile de la sesiunea anterioară
+
+            const embed = new EmbedBuilder()
+                .setTitle('📊 SE PREGĂTEȘTE O SESIUNE DE ROLEPLAY!')
+                .setDescription(`Salutare <@&1392137660117549056> (sau oricine e interesat),\n\n${user} pregătește o sesiune.\n**Vă rugăm să votați mai jos** dacă puteți participa pentru a ști dacă suntem suficienți jucători!`)
+                .setColor('Orange')
+                .addFields({ name: '✋ Voturi DA', value: '0 membri', inline: true })
+                .setThumbnail('https://i.imgur.com/zV8Q8Hq.png') // Aici poți pune un logo
+                .setFooter({ text: 'EUGVRP România' }).setTimestamp();
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('vote_yes').setLabel('Voi participa!').setStyle(ButtonStyle.Success).setEmoji('✅'),
+                new ButtonBuilder().setCustomId('view_voters').setLabel('Vezi Votanți (Staff)').setStyle(ButtonStyle.Secondary).setEmoji('📋')
+            );
+
+            return interaction.reply({ content: '@here', embeds: [embed], components: [row] });
+        }
+
+        // START SESIUNE
         if (commandName === 'sesiune_start') {
             if (!member.roles.cache.has(ROLES.SESSION_HOST)) {
                 return interaction.reply({ content: 'Nu ai permisiunea de a folosi această comandă.', ephemeral: true });
@@ -112,7 +201,7 @@ client.on('interactionCreate', async interaction => {
 
             sessionData.active = true;
             sessionData.host = user;
-            sessionData.link = interaction.options.getString('link');
+            sessionData.link = interaction.options.getString('link'); // Linkul îl salvăm, dar NU îl punem direct în embed public
             sessionData.startTime = Date.now();
             sessionData.shiftsCount = 0;
             sessionData.activeMembers.clear();
@@ -124,13 +213,21 @@ client.on('interactionCreate', async interaction => {
                     { name: 'Host Sesiune', value: `${user}`, inline: true },
                     { name: 'Status', value: 'ACTIV', inline: true },
                     { name: 'Ora Start', value: `<t:${Math.floor(Date.now() / 1000)}:T>`, inline: true },
-                    { name: 'Link Server', value: sessionData.link, inline: false },
                     { name: 'Membri în Tură', value: '0', inline: true }
                 )
+                .setDescription('Pentru a intra pe server, apasă butonul de mai jos. (Necesită Early Access sau rol de Facțiune).')
                 .setFooter({ text: 'EUGVRP România' }).setTimestamp();
 
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('get_server_link')
+                    .setLabel('Obține Link Server')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('🔗')
+            );
+
             const channel = guild.channels.cache.get(CHANNELS.SESIUNE);
-            if (channel) await channel.send({ content: `<@&${ROLES.SESSION_HOST}> Sesiunea a început!`, embeds: [embed] });
+            if (channel) await channel.send({ content: `<@&${ROLES.SESSION_HOST}> Sesiunea a început!`, embeds: [embed], components: [row] });
 
             await sendLog(guild, new EmbedBuilder().setColor('Green').setTitle('Sesiune Pornită').setDescription(`Sesiune pornită de ${user}`));
             return interaction.reply({ content: 'Sesiunea a fost pornită cu succes!', ephemeral: true });
@@ -154,6 +251,7 @@ client.on('interactionCreate', async interaction => {
             });
             activeShifts.clear();
             sessionData.active = false;
+            sessionData.link = null; // Ștergem linkul din memorie pentru siguranță
 
             const embed = new EmbedBuilder()
                 .setTitle('🔴 SESIUNE ROLEPLAY OPRITĂ')
@@ -203,7 +301,6 @@ client.on('interactionCreate', async interaction => {
             sessionData.activeMembers.add(user.id);
             sessionData.shiftsCount++;
 
-            // Inițializare stats jucător dacă nu există
             if (!userStats.has(user.id)) userStats.set(user.id, { shifts: 0, totalTime: 0, dept: dept });
 
             const embed = new EmbedBuilder().setTitle('✅ TURĂ ÎNCEPUTĂ').setColor(color)
@@ -234,7 +331,6 @@ client.on('interactionCreate', async interaction => {
             
             activeShifts.delete(targetUser.id);
 
-            // Actualizare Stats
             let stats = userStats.get(targetUser.id);
             stats.shifts += 1;
             stats.totalTime += durationMs;
@@ -290,7 +386,7 @@ client.on('interactionCreate', async interaction => {
                     { name: 'Apelant', value: `${user}`, inline: true },
                     { name: '📍 Locație', value: locatie, inline: true },
                     { name: '📞 Mesaj / Incident', value: mesaj, inline: false }
-                ).setTimestamp().setThumbnail('https://i.imgur.com/zV8Q8Hq.png');
+                ).setTimestamp();
 
             await sendLog(guild, embed);
             return interaction.reply({ content: `<@&${ROLES.POLITIE}> <@&${ROLES.POMPIERI}> Apel 112 în așteptare!`, embeds: [embed] });
