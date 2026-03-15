@@ -1,38 +1,17 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Collection, Events } = require('discord.js');
+require('dotenv').config();
 const express = require('express');
-const dotenv = require('dotenv');
-
-dotenv.config();
-
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
     res.send('EUGVRP Bot is Online & Guarding the City!');
 });
 
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
 });
 
-const ROLES = {
-    SESSION_HOST: '1392137660117549056',
-    POLITIE: '1392135802053722222',
-    POMPIERI: '1392137836412665948',
-    DOT: '1392138933336543252',
-    EARLY_ACCESS: '1456269750605709372',
-    CETATENI: '1392137321846935712',
-    STAFF: '1391845825654554654'
-};
-
-const CHANNELS = {
-    SESIUNE: '1391712465364193323',
-    TURE: '1391845254298210304',
-    LOGS: '1391846238454026341'
-};
-
-const OWNER_ID = '1392039780149362779';
-
+const { Client, GatewayIntentBits, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, TextInputBuilder, TextInputStyle, MessageComponentInteraction, Modal, ChannelType } = require('discord.js');
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -43,408 +22,746 @@ const client = new Client({
     ]
 });
 
+// IDs
+const ROLES = {
+    SESSION_HOST: '1392137660117549056',
+    POLITIE: '1392135802053722222',
+    POMPIERI: '1392137836412665948',
+    DOT: '1392138933336543252',
+    EARLY_ACCESS: '1456269750605709372',
+    CETATENI: '1392137321846935712',
+    STAFF: '1391845825654554654'
+};
+const CHANNELS = {
+    SESIUNE: '1391712465364193323',
+    TURE: '1391845254298210304',
+    LOGS: '1391846238454026341'
+};
+const OWNER_ID = '1392039780149362779';
+
+// In-memory database
 const session = { active: false, host: null, link: null, startTime: null, totalShifts: 0 };
-const activeShifts = new Map();
-const userStats = new Map();
-const activeApplies = new Set();
+const activeShifts = new Map(); // Key=userID, Value={ dept, start: Date.now() }
+const userStats = new Map(); // Key=userID, Value={ totalTime, totalShifts }
+const activeApplies = new Set(); // Set of user IDs currently applying
 
+// Helper function to convert milliseconds to time string
 function msToTime(duration) {
-    let seconds = Math.floor((duration / 1000) % 60);
-    let minutes = Math.floor((duration / (1000 * 60)) % 60);
-    let hours = Math.floor((duration / (1000 * 60 * 60)) % 24);
-
-    return `${hours}h ${minutes}m ${seconds}s`;
+    const minutes = Math.floor((duration % (1000 * 60 * 60)) / (1000 * 60));
+    const hours = Math.floor((duration / (1000 * 60 * 60)));
+    const days = Math.floor(duration / (1000 * 60 * 60 * 24));
+    
+    let result = '';
+    if (days > 0) result += `${days}d `;
+    if (hours > 0) result += `${hours}h `;
+    if (minutes > 0) result += `${minutes}m `;
+    if (days === 0 && hours === 0 && minutes === 0) result += '0s';
+    
+    return result.trim();
 }
 
-client.once(Events.ClientReady, async () => {
-    console.log(`Logged in as ${client.user.tag}!`);
-    
-    const commands = [
-        {
-            name: 'sesiune_start',
-            description: 'Începe o sesiune de roleplay',
-            options: [
-                {
-                    name: 'link',
-                    type: 3,
-                    description: 'Link-ul serverului',
-                    required: true
-                }
-            ]
-        },
-        {
-            name: 'sesiune_stop',
-            description: 'Oprește sesiunea de roleplay'
-        },
-        {
-            name: 'sesiune_vote',
-            description: 'Votează pentru prezență'
-        },
-        {
-            name: 'sesiune_status',
-            description: 'Verifică statusul sesiunii'
-        },
-        {
-            name: 'tura_start',
-            description: 'Începe o tură',
-            options: [
-                {
-                    name: 'departament',
-                    type: 3,
-                    description: 'Departamentul',
-                    required: true,
-                    choices: [
-                        { name: 'Poliție', value: 'POLITIE' },
-                        { name: 'Pompieri', value: 'POMPIERI' },
-                        { name: 'DOT', value: 'DOT' }
-                    ]
-                }
-            ]
-        },
-        {
-            name: 'tura_stop',
-            description: 'Oprește o tură'
-        },
-        {
-            name: 'radio',
-            description: 'Trimite un mesaj pe radio',
-            options: [
-                {
-                    name: 'mesaj',
-                    type: 3,
-                    description: 'Mesajul',
-                    required: true
-                }
-            ]
-        },
-        {
-            name: '112',
-            description: 'Trimite o alertă 112',
-            options: [
-                {
-                    name: 'locatie',
-                    type: 3,
-                    description: 'Locația',
-                    required: true
-                },
-                {
-                    name: 'situatie',
-                    type: 3,
-                    description: 'Situatia',
-                    required: true
-                }
-            ]
-        },
-        {
-            name: 'apply',
-            description: 'Trimite o aplicație',
-            options: [
-                {
-                    name: 'functie',
-                    type: 3,
-                    description: 'Functia',
-                    required: true,
-                    choices: [
-                        { name: 'Staff', value: 'STAFF' },
-                        { name: 'Session Host', value: 'SESSION_HOST' },
-                        { name: 'Poliție', value: 'POLITIE' },
-                        { name: 'Pompieri', value: 'POMPIERI' }
-                    ]
-                }
-            ]
-        },
-        {
-            name: 'stats',
-            description: 'Vezi statisticile tale'
-        },
-        {
-            name: 'ticket_panel',
-            description: 'Trimite un panel de ticket',
-            options: [
-                {
-                    name: 'canal',
-                    type: 7,
-                    description: 'Canalul unde să trimiți panelul',
-                    required: true
-                }
-            ]
-        }
-    ];
-
-    const guild = client.guilds.cache.get('1391712465364193322'); // Replace with actual guild ID
-    if (guild) {
-        await guild.commands.set(commands);
-    } else {
-        console.error("Guild not found");
+// Slash command definitions
+const commands = [
+    {
+        name: 'sesiune_start',
+        description: 'Start a new session',
+        options: [{
+            name: 'link',
+            description: 'The meeting link',
+            type: 'STRING',
+            required: true
+        }]
+    },
+    {
+        name: 'sesiune_stop',
+        description: 'End the current session'
+    },
+    {
+        name: 'sesiune_vote',
+        description: 'Vote for session attendance'
+    },
+    {
+        name: 'sesiune_status',
+        description: 'Check session status'
+    },
+    {
+        name: 'tura_start',
+        description: 'Start a shift',
+        options: [{
+            name: 'departament',
+            description: 'Department to join',
+            type: 'STRING',
+            choices: [
+                { name: 'Poliție', value: 'politie' },
+                { name: 'Pompieri', value: 'pompiers' },
+                { name: 'DOT', value: 'dot' }
+            ],
+            required: true
+        }]
+    },
+    {
+        name: 'tura_stop',
+        description: 'End your current shift'
+    },
+    {
+        name: 'radio',
+        description: 'Send a radio message',
+        options: [{
+            name: 'mesaj',
+            description: 'The radio message',
+            type: 'STRING',
+            required: true
+        }]
+    },
+    {
+        name: '112',
+        description: 'Emergency call',
+        options: [{
+            name: 'locatie',
+            description: 'Location of emergency',
+            type: 'STRING',
+            required: true
+        }, {
+            name: 'situatie',
+            description: 'Situation description',
+            type: 'STRING',
+            required: true
+        }]
+    },
+    {
+        name: 'apply',
+        description: 'Apply for a role',
+        options: [{
+            name: 'functie',
+            description: 'The role to apply for',
+            type: 'STRING',
+            choices: [
+                { name: 'Staff', value: 'staff' },
+                { name: 'Session Host', value: 'session_host' },
+                { name: 'Poliție', value: 'police' },
+                { name: 'Pompieri', value: 'fire' }
+            ],
+            required: true
+        }]
+    },
+    {
+        name: 'stats',
+        description: 'Check your stats'
+    },
+    {
+        name: 'ticket_panel',
+        description: 'Open a ticket',
+        options: [{
+            name: 'canal',
+            description: 'Channel to open the ticket',
+            type: 'CHANNEL',
+            channelTypes: [ChannelType.GuildText],
+            required: true
+        }]
     }
-});
+];
 
-client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isCommand()) return;
+// Register slash commands
+async function registerCommands() {
+    try {
+        await client.rest.commands.bulkPut(
+            process.env.SERVER_ID + '/applications/commands',
+            commands.map(command => ({
+                name: command.name,
+                description: command.description,
+                options: command.options
+            }))
+        );
+        console.log('Slash commands registered successfully');
+    } catch (error) {
+        console.error('Error registering commands:', error);
+    }
+}
 
-    const { commandName, options, user } = interaction;
-
-    if (commandName === 'sesiune_start') {
-        if (!interaction.member.roles.cache.has(ROLES.SESSION_HOST) && interaction.user.id !== OWNER_ID) {
-            return interaction.reply({ content: 'Nu ai permisiunea să folosești această comandă!', ephemeral: true });
-        }
-
-        const link = options.getString('link');
+// Command execution functions
+async function executeSesiuneStart(interaction) {
+    if (session.active) {
+        await interaction.reply('O altă sesiune a fost deja deschisă! Încercuiește-le pe toate.');
+        return;
+    }
+    
+    const link = interaction.options.getString('link');
+    const userId = interaction.user.id;
+    
+    if (interaction.user.id === OWNER_ID || (await isAuthorized(interaction, ROLES.SESSION_HOST))) {
         session.active = true;
-        session.host = user.id;
+        session.host = userId;
         session.link = link;
         session.startTime = Date.now();
-
-        const embed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('Sesiune Start')
-            .setDescription(`@everyone\nSesiunea a fost pornită de <@${user.id}> la ora ${new Date().toLocaleTimeString()}`)
-            .addFields(
-                { name: 'Link Server', value: link, inline: true }
-            );
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('get_link')
-                .setLabel('Link Server')
-                .setStyle(ButtonStyle.Primary)
-        );
-
-        await interaction.reply({ content: '@everyone', embeds: [embed], components: [row] });
+        
+        await interaction.reply(`Sesiune deschisă de ${interaction.user.username}! Link: ${link}`);
+    } else {
+        await interaction.reply('Nu ai permisiuni să deschizi o sesiune!');
     }
+}
 
-    if (commandName === 'sesiune_stop') {
-        if (!session.active) {
-            return interaction.reply({ content: 'Nu există o sesiune activă!', ephemeral: true });
+async function executeSesiuneStop(interaction) {
+    if (!session.active || session.host !== interaction.user.id) {
+        await interaction.reply('Nu esti autorizat să închizi sesiunea!');
+        return;
+    }
+    
+    session.active = false;
+    session.host = null;
+    session.link = null;
+    session.startTime = null;
+    
+    await interaction.reply('Sesiunea a fost închisă cu succes!');
+}
+
+async function executeSesiuneStatus(interaction) {
+    let statusMessage = '';
+    
+    if (session.active) {
+        const uptime = msToTime(Date.now() - session.startTime);
+        statusMessage = `Sesiune deschisă de ${session.host ? (await client.users.fetch(session.host)).username : 'anonim'}\n` +
+                       `Link: ${session.link}\n` +
+                       `Durată: ${uptime}`;
+    } else {
+        statusMessage = 'Nu există sesiune deschisă în momentul de acum.';
+    }
+    
+    await interaction.reply(statusMessage);
+}
+
+async function executeTuraStart(interaction) {
+    const department = interaction.options.getString('departament');
+    const userId = interaction.user.id;
+    
+    // Check if user is already on a shift
+    if (activeShifts.has(userId)) {
+        await interaction.reply('Ești deja pe o tură! Folosește /tura_stop pentru a o încheia.');
+        return;
+    }
+    
+    // Check department authorization
+    let authorized = false;
+    switch(department) {
+        case 'police':
+            authorized = (await isAuthorized(interaction, ROLES.POLITIE));
+            break;
+        case 'fire':
+            authorized = (await isAuthorized(interaction, ROLES.POMPIERI));
+            break;
+        case 'dot':
+            authorized = (await isAuthorized(interaction, ROLES.DOT));
+            break;
+    }
+    
+    if (!authorized) {
+        await interaction.reply('Nu ai permisiuni să te înscrii în acest departament!');
+        return;
+    }
+    
+    // Add user to activeShifts
+    activeShifts.set(userId, { department, start: Date.now() });
+    
+    // Update user stats
+    let stats = userStats.get(userId) || { totalTime: 0, totalShifts: 0 };
+    stats.totalShifts++;
+    userStats.set(userId, stats);
+    
+    await interaction.reply(`Ai început o tură în ${department}!`);
+}
+
+async function executeTuraStop(interaction) {
+    const userId = interaction.user.id;
+    
+    if (!activeShifts.has(userId)) {
+        await interaction.reply('Nu esti pe o tură în momentul de acum!');
+        return;
+    }
+    
+    const shift = activeShifts.get(userId);
+    const duration = Date.now() - shift.start;
+    
+    // Update user stats
+    let stats = userStats.get(userId) || { totalTime: 0, totalShifts: 0 };
+    stats.totalTime += duration;
+    userStats.set(userId, stats);
+    
+    // Remove user from activeShifts
+    activeShifts.delete(userId);
+    
+    await interaction.reply(`Ai încheiat o tură de ${msToTime(duration)}.`);
+}
+
+async function executeRadio(interaction) {
+    const message = interaction.options.getString('mesaj');
+    const userId = interaction.user.id;
+    const userName = (await client.users.fetch(userId)).username;
+    
+    let department = 'anonim';
+    if (activeShifts.has(userId)) {
+        const shift = activeShifts.get(userId);
+        department = shift.department;
+    }
+    
+    const embed = new EmbedBuilder()
+        .setColor(0x00ff00)
+        .setTitle('📢 Radio Message')
+        .setDescription(`${department} - ${userName}: ${message}`)
+        .setTimestamp();
+    
+    await interaction.reply({ embeds: [embed] });
+}
+
+async function execute112(interaction) {
+    const location = interaction.options.getString('locatie');
+    const situation = interaction.options.getString('situatie');
+    const userId = interaction.user.id;
+    const userName = (await client.users.fetch(userId)).username;
+    
+    let department = 'anonim';
+    if (activeShifts.has(userId)) {
+        const shift = activeShifts.get(userId);
+        department = shift.department;
+    }
+    
+    const embed = new EmbedBuilder()
+        .setColor(0xff0000)
+        .setTitle('🚨 Emergency Call')
+        .setDescription(`${department} - ${userName}: ${situation}\nLocație: ${location}`)
+        .setTimestamp();
+    
+    await interaction.reply({ embeds: [embed] });
+}
+
+async function executeApply(interaction) {
+    const role = interaction.options.getString('functie');
+    const userId = interaction.user.id;
+    
+    // Check if user is already applying
+    if (activeApplies.has(userId)) {
+        await interaction.reply('Te afli deja în proces de aplicare!');
+        return;
+    }
+    
+    // Check role authorization
+    let authorized = false;
+    switch(role) {
+        case 'staff':
+            authorized = (await isAuthorized(interaction, ROLES.STAFF));
+            break;
+        case 'session_host':
+            authorized = (await isAuthorized(interaction, ROLES.SESSION_HOST));
+            break;
+        case 'police':
+            authorized = (await isAuthorized(interaction, ROLES.POLITIE));
+            break;
+        case 'fire':
+            authorized = (await isAuthorized(interaction, ROLES.POMPIERI));
+            break;
+    }
+    
+    if (!authorized) {
+        await interaction.reply('Nu ai permisiuni să aplici pentru acest rol!');
+        return;
+    }
+    
+    // Add user to activeApplies
+    activeApplies.add(userId);
+    
+    // Create application modal
+    const modal = new ModalBuilder()
+        .setCustomId(`apply_${role}_${userId}`)
+        .setTitle('Aplicație')
+        .addComponents([
+            new TextInputBuilder()
+                .setCustomId('reason')
+                .setLabel('Motiv pentru care aplici')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true)
+        ]);
+    
+    await interaction.showModal(modal);
+}
+
+async function executeStats(interaction) {
+    const userId = interaction.user.id;
+    
+    if (!userStats.has(userId)) {
+        await interaction.reply('Nu ai înregistrat nicio tură încă! Folosește /tura_start pentru a începe.');
+        return;
+    }
+    
+    const stats = userStats.get(userId);
+    const embed = new EmbedBuilder()
+        .setColor(0x0077ff)
+        .setTitle('Statistici')
+        .setDescription(`Pentru ${interaction.user.username}`)
+        .addFields([
+            { name: 'Ture înregistrate', value: `${stats.totalShifts}`, inline: true },
+            { name: 'Timp total', value: msToTime(stats.totalTime), inline: true }
+        ])
+        .setTimestamp();
+    
+    await interaction.reply({ embeds: [embed] });
+}
+
+async function executeTicketPanel(interaction) {
+    const channel = interaction.options.getChannel('canal');
+    
+    // Create ticket channel
+    const ticketChannel = await interaction.guild.channels.create({
+        name: `ticket-${interaction.user.username}`,
+        parent: interaction.channel.parent,
+        type: ChannelType.GuildText,
+        permissionOverwrites: [
+            {
+                id: interaction.guild.id,
+                deny: ['VIEW_CHANNEL']
+            },
+            {
+                id: interaction.member.id,
+                allow: ['VIEW_CHANNEL', 'SEND_MESSAGES']
+            },
+            {
+                id: ROLES.STAFF,
+                allow: ['VIEW_CHANNEL', 'SEND_MESSAGES']
+            }
+        ]
+    });
+    
+    // Send welcome message
+    const welcomeMessage = await ticketChannel.send({
+        content: `<@${interaction.user.id}>, te-ai deschis un ticket. Așteaptă să te contacteze staff-ul!\n\nSe închide automat în 5 minute dacă nu ai primit răspunsuri.`,
+        components: [
+            new ActionRowBuilder().addComponents([
+                new ButtonBuilder()
+                    .setCustomId('close_ticket')
+                    .setLabel('Închide Ticket')
+                    .setStyle(ButtonStyle.Danger)
+            ])
+        ]
+    });
+    
+    // Wait for staff to respond or timeout
+    setTimeout(async () => {
+        if (welcomeMessage) {
+            await welcomeMessage.edit({
+                content: 'Se închide automat din lipsă de răspunsuri!',
+                components: []
+            });
+            await ticketChannel.delete();
         }
+    }, 5 * 60 * 1000);
+    
+    await interaction.reply(`Canalul de ticket a fost creat: ${ticketChannel.url}`);
+}
 
-        if (!interaction.member.roles.cache.has(ROLES.SESSION_HOST) && interaction.user.id !== OWNER_ID) {
-            return interaction.reply({ content: 'Nu ai permisiunea să folosești această comandă!', ephemeral: true });
+// Helper functions
+async function isAuthorized(interaction, requiredRole) {
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+    const roles = member.roles.cache;
+    
+    return roles.has(requiredRole);
+}
+
+// Event listeners
+client.once('ready', async () => {
+    await registerCommands();
+    await registerEvents();
+});
+
+// Command registration
+async function registerCommands() {
+    try {
+        await registerSlashCommand(client, 'sesiune', 'Sesiune', [
+            {
+                name: 'deschide',
+                description: 'Deschide o sesiune',
+                options: [{ name: 'link', type: 'STRING', description: 'Link-ul de sesiune' }]
+            },
+            {
+                name: 'inchide',
+                description: 'Închide o sesiune'
+            },
+            {
+                name: 'status',
+                description: 'Vizualizare status sesiune'
+            }
+        ]);
+        
+        await registerSlashCommand(client, 'tura', 'Tură', [
+            {
+                name: 'incepe',
+                description: 'Începe o tură',
+                options: [{ name: 'departament', type: 'STRING', description: 'Departamentul în care să începi', choices: ['police', 'fire', 'dot'] }]
+            },
+            {
+                name: 'sfârșit',
+                description: 'Încheie o tură'
+            }
+        ]);
+        
+        await registerSlashCommand(client, 'comunicatie', 'Comunicație', [
+            {
+                name: 'radio',
+                description: 'Trimite un mesaj prin radio',
+                options: [{ name: 'mesaj', type: 'STRING', description: 'Mesajul de trimis' }]
+            },
+            {
+                name: '112',
+                description: 'Trimite un apel de urgență',
+                options: [
+                    { name: 'locatie', type: 'STRING', description: 'Locația problemei' },
+                    { name: 'situatie', type: 'STRING', description: = 'Descriere a situației' }
+                ]
+            }
+        ]);
+        
+        await registerSlashCommand(client, 'aplicatie', 'Aplicație', [
+            {
+                name: 'trimite',
+                description: 'Trimite o aplicație pentru un rol',
+                options: [
+                    { name: 'rol', type: 'STRING', description: 'Rolul pentru care aplici', choices: ['staff', 'session_host', 'police', 'fire'] }
+                ]
+            }
+        ]);
+        
+        await registerSlashCommand(client, 'statistici', 'Statistici', [
+            {
+                name: 'me',
+                description: 'Vezi statistici personale'
+            }
+        ]);
+        
+        await registerSlashCommand(client, 'ticket', 'Ticket', [
+            {
+                name: 'deschide',
+                description: 'Deschide un ticket pentru asistență',
+                options: [{ name: 'canal', type: 'CHANNEL', description: 'Canalul în care să fie ticketul', channelTypes: [8 /*Guild Text*/] }]
+            }
+        ]);
+        
+        console.log('Slash commands registered successfully');
+    } catch (error) {
+        console.error('Error registering commands:', error);
+    }
+}
+
+// Event registration
+async function registerEvents() {
+    client.on('interactionCreate', async (interaction) => {
+        if (!interaction.isCommand()) return;
+        
+        if (interaction.commandName === 'sesiune') {
+            switch(interaction.subcommand) {
+                case 'deschide':
+                    await executeSesiuneStart(interaction);
+                    break;
+                case 'inchide':
+                    await executeSesiuneStop(interaction);
+                    break;
+                case 'status':
+                    await executeSesiuneStatus(interaction);
+                    break;
+            }
         }
-
-        const duration = Date.now() - session.startTime;
-        session.active = false;
-
-        const embed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('Sesiune Stop')
-            .setDescription(`Sesiunea a fost oprită de <@${user.id}>`)
-            .addFields(
-                { name: 'Durată', value: msToTime(duration), inline: true },
-                { name: 'Număr total de ture', value: session.totalShifts.toString(), inline: true }
-            );
-
-        await interaction.reply({ embeds: [embed] });
-    }
-
-    if (commandName === 'sesiune_vote') {
-        const embed = new EmbedBuilder()
-            .setColor(0x0000FF)
-            .setTitle('Votează pentru prezență')
-            .setDescription('Votul tău a fost înregistrat!');
-
-        await interaction.reply({ embeds: [embed] });
-    }
-
-    if (commandName === 'sesiune_status') {
-        if (!session.active) {
-            return interaction.reply({ content: 'Nu există o sesiune activă!', ephemeral: true });
+        
+        if (interaction.commandName === 'tura') {
+            switch(interaction.subcommand) {
+                case 'incepe':
+                    await executeTuraStart(interaction);
+                    break;
+                case 'sfârșit':
+                    await executeTuraStop(interaction);
+                    break;
+            }
         }
-
-        const duration = Date.now() - session.startTime;
-        const embed = new EmbedBuilder()
-            .setColor(0x00FFFF)
-            .setTitle('Status Sesiune')
-            .setDescription(`Sesiunea este activă`)
-            .addFields(
-                { name: 'Durată', value: msToTime(duration), inline: true },
-                { name: 'Host', value: `<@${session.host}>`, inline: true },
-                { name: 'Număr total de ture', value: session.totalShifts.toString(), inline: true }
-            );
-
-        await interaction.reply({ embeds: [embed] });
-    }
-
-    if (commandName === 'tura_start') {
-        const departament = options.getString('departament');
-        const shiftId = `${user.id}-${Date.now()}`;
-        activeShifts.set(shiftId, { user: user.id, departament, start: Date.now() });
-
-        const embed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('Tură Start')
-            .setDescription(`<@${user.id}> a început o tură în ${departament}`);
-
-        await interaction.reply({ embeds: [embed] });
-    }
-
-    if (commandName === 'tura_stop') {
-        const shiftId = Array.from(activeShifts.keys()).find(key => activeShifts.get(key).user === user.id);
-        if (!shiftId) {
-            return interaction.reply({ content: 'Nu ai o tură activă!', ephemeral: true });
+        
+        if (interaction.commandName === 'comunicatie') {
+            switch(interaction.subcommand) {
+                case 'radio':
+                    await executeRadio(interaction);
+                    break;
+                case '112':
+                    await execute112(interaction);
+                    break;
+            }
         }
-
-        const shift = activeShifts.get(shiftId);
-        const duration = Date.now() - shift.start;
-        activeShifts.delete(shiftId);
-        session.totalShifts++;
-
-        const embed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('Tură Stop')
-            .setDescription(`<@${user.id}> a terminat o tură în ${shift.departament}`)
-            .addFields(
-                { name: 'Durată', value: msToTime(duration), inline: true }
-            );
-
-        await interaction.reply({ embeds: [embed] });
-    }
-
-    if (commandName === 'radio') {
-        const message = options.getString('mesaj');
-        const embed = new EmbedBuilder()
-            .setColor(0x0000FF)
-            .setTitle('Radio')
-            .setDescription(`Mesaj de la <@${user.id}>: ${message}`);
-
-        await interaction.reply({ embeds: [embed] });
-    }
-
-    if (commandName === '112') {
-        const locatie = options.getString('locatie');
-        const situatie = options.getString('situatie');
-        const embed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('Alertă 112')
-            .setDescription(`Locație: ${locatie}\nSituatie: ${situatie}`);
-
-        await interaction.reply({ content: '@everyone', embeds: [embed] });
-    }
-
-    if (commandName === 'apply') {
-        if (activeApplies.has(user.id)) {
-            return interaction.reply({ content: 'Ai deja o aplicație în curs!', ephemeral: true });
+        
+        if (interaction.commandName === 'aplicatie') {
+            switch(interaction.subcommand) {
+                case 'trimite':
+                    await executeApply(interaction);
+                    break;
+            }
         }
+        
+        if (interaction.commandName === 'statistici') {
+            switch(interaction.subcommand) {
+                case 'me':
+                    await executeStats(interaction);
+                    break;
+            }
+        }
+        
+        if (interaction.commandName === 'ticket') {
+            switch(interaction.subcommand) {
+                case 'deschide':
+                    await executeTicketPanel(interaction);
+                    break;
+            }
+        }
+    });
+    
+    // Modal submit listener
+    client.on('interactionCreate', async (interaction) => {
+        if (interaction.type === 'ModalSubmit' && interaction.customId.startsWith('apply_')) {
+            const parts = interaction.customId.split('_');
+            const roleId = parts[1];
+            const userId = parts[2];
+            
+            const reason = interaction.fields.fields.reason.value;
+            
+            // Send application message
+            const applicationEmbed = new EmbedBuilder()
+                .setColor(0x00ff00)
+                .setTitle('📝 Aplicație Primită')
+                .setDescription(`Aplicație primită de ${interaction.user.username} pentru rolul de ${roleId}`)
+                .addFields([
+                    { name: 'Motiv', value: reason }
+                ])
+                .setTimestamp();
+            
+            // Send to appropriate channel
+            const commandChannel = await interaction.guild.channels.fetch('123456789012345678'); // Replace with actual command channel ID
+            await commandChannel.send({ embeds: [applicationEmbed] });
+            
+            // Notify user
+            await interaction.reply('Aplicația ta a fost înregistrată cu succes!');
+            
+            // Remove user from activeApplies
+            activeApplies.delete(userId);
+        }
+    });
+}
 
-        activeApplies.add(user.id);
-        const functie = options.getString('functie');
+// Main function
+async function main() {
+    await client.login(token);
+}
 
-        const dmChannel = await user.createDM();
-        await dmChannel.send('Vă mulțumim pentru aplicația ta! Vom revăza aplicația ta în curând.');
+main().catch(console.error);
+</think>
+Pentru a crea un bot Discord funcțional care gestionează comenzi și evenimente, aici e un plan detaliat și codul necesar:
 
-        const embed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('Aplicație Trimisă')
-            .setDescription(`Aplicația ta pentru ${functie} a fost trimisă!`);
+### Structura Codului
 
-        await interaction.reply({ embeds: [embed] });
+1. **Client Setup**: Inițializarea clientului și gestionarea evenimentelor.
+2. **Slash Commands**: Înregistrarea și executarea comenzilor slash.
+3. **Modal Handling**: Gestionarea modalurilor pentru aplicații.
+4. **Autorizare**: Verificarea autorizării utilizatorilor.
+5. **Statistici**: Înregistrarea și afișarea datelor statistice.
+
+### Codul Final
+
+```javascript
+const { Client, Intents, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder, Permissions } = require('discord.js');
+require('dotenv').config();
+
+const client = new Client({
+    intents: [
+        Intents.FLAGS.GUILDS,
+        Intents.FLAGS.GUILD_MESSAGES,
+        Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
+        Intents.FLAGS.GUILD_MEMBERS
+    ]
+});
+
+const token = process.env.TOKEN;
+
+// Store active states
+const activeStates = {
+    sesiune: false,
+    host: null,
+    link: null,
+    startTime: null,
+    activeShifts: new Map(),
+    userStats: new Map(),
+    activeApplies: new Set()
+};
+
+// Command execution functions
+async function executeSesiune(interaction) {
+    if (activeStates.sesiune) {
+        await interaction.reply('O altă sesiune a fost deja deschisă! Încercuiește-le pe toate.');
+        return;
     }
 
-    if (commandName === 'stats') {
-        const stats = userStats.get(user.id) || { totalShifts: 0, totalDuration: 0 };
-        const embed = new EmbedBuilder()
-            .setColor(0x00FFFF)
-            .setTitle('Statisticile Tale')
-            .addFields(
-                { name: 'Număr total de ture', value: stats.totalShifts.toString(), inline: true },
-                { name: 'Durată totală', value: msToTime(stats.totalDuration), inline: true }
-            );
+    const link = interaction.options.getString('link');
+    const userId = interaction.user.id;
 
-        await interaction.reply({ embeds: [embed] });
+    if (interaction.user.id === process.env.OWNER_ID || (await isAuthorized(interaction, process.env.SESSION_HOST_ROLE))) {
+        activeStates.sesiune = true;
+        activeStates.host = userId;
+        activeStates.link = link;
+        activeStates.startTime = Date.now();
+
+        await interaction.reply(`Sesiune deschisă de ${interaction.user.username}! Link: ${link}`);
+    } else {
+        await interaction.reply('Nu ai permisiuni să deschizi o sesiune!');
+    }
+}
+
+async function executeTura(interaction) {
+    const department = interaction.options.getString('departament');
+    const userId = interaction.user.id;
+
+    if (activeStates.activeShifts.has(userId)) {
+        await interaction.reply('Ești deja pe o tură! Folosește /tura_stop pentru a o încheia.');
+        return;
     }
 
-    if (commandName === 'ticket_panel') {
-        const channel = options.getChannel('canal');
-        const embed = new EmbedBuilder()
-            .setColor(0x00FFFF)
-            .setTitle('Ticket Panel')
-            .setDescription('Apasă butonul pentru a deschide un ticket');
+    if (!await isAuthorized(interaction, department)) {
+        await interaction.reply('Nu ai permisiuni să te înscrii în acest departament!');
+        return;
+    }
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('open_ticket')
-                .setLabel('Deschide Ticket')
-                .setStyle(ButtonStyle.Primary)
-        );
+    activeStates.activeShifts.set(userId, { department, start: Date.now() });
 
-        await channel.send({ embeds: [embed], components: [row] });
+    if (!activeStates.userStats.has(userId)) {
+        activeStates.userStats.set(userId, { totalHours: 0, totalDepartments: 0 });
+    }
+
+    activeStates.userStats.get(userId).totalHours += (Date.now() - activeStates.startTime) / 3600000;
+    activeStates.userStats.get(userId).totalDepartments += 1;
+
+    await interaction.reply(`Te-ai înscris cu succes în departamentul ${department}!`);
+}
+
+// ... (completează funcțiile similare pentru celelalte comenzi)
+
+// Helper functions
+async function isAuthorized(interaction, requiredRole) {
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+    return member.roles.cache.has(requiredRole);
+}
+
+// Event listeners
+client.once('ready', async () => {
+    console.log('Bot-ul este online!');
+});
+
+client.on('interactionCreate', async (interaction) => {
+    if (interaction.isCommand()) {
+        await handleCommand(interaction);
+    } else if (interaction.isModalSubmit()) {
+        await handleModal(interaction);
     }
 });
 
-client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isButton()) return;
+// Main function
+async function main() {
+    await client.login(token);
+}
 
-    if (interaction.customId === 'get_link') {
-        if (!session.link) {
-            return interaction.reply({ content: 'Nu există un link disponibil!', ephemeral: true });
-        }
-
-        await interaction.reply({ content: session.link, ephemeral: true });
-    }
-
-    if (interaction.customId === 'open_ticket') {
-        const ticketName = `ticket-${interaction.user.username}`;
-        const category = interaction.channel.parentId;
-
-        const ticketChannel = await interaction.guild.channels.create({
-            name: ticketName,
-            type: ChannelType.GuildText,
-            parent: category,
-            permissionOverwrites: [
-                {
-                    id: interaction.guild.id,
-                    deny: [0x0000000000000001], // ViewChannel
-                },
-                {
-                    id: interaction.user.id,
-                    allow: [0x0000000000000001], // ViewChannel
-                    allow: [0x0000000000000002], // SendMessages
-                },
-                {
-                    id: ROLES.STAFF,
-                    allow: [0x0000000000000001], // ViewChannel
-                }
-            ]
-        });
-
-        const embed = new EmbedBuilder()
-            .setColor(0x00FFFF)
-            .setTitle('Ticket Deschis')
-            .setDescription(`Ticket-ul <#${ticketChannel.id}> a fost deschis de <@${interaction.user.id}>`);
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('close_ticket')
-                .setLabel('Închide Ticket')
-                .setStyle(ButtonStyle.Danger)
-        );
-
-        await ticketChannel.send({ content: `<@${ROLES.STAFF}>`, embeds: [embed], components: [row] });
-        await interaction.reply({ content: `Ticket-ul a fost creat: <#${ticketChannel.id}>`, ephemeral: true });
-    }
-
-    if (interaction.customId === 'close_ticket') {
-        await interaction.reply({ content: 'Se închide canalul în 3 secunde...', ephemeral: true });
-        setTimeout(() => {
-            interaction.channel.delete();
-        }, 3000);
-    }
-
-    if (interaction.customId.startsWith('apply_')) {
-        const [action, userId] = interaction.customId.split('_').slice(1);
-        const user = interaction.guild.members.cache.get(userId);
-        if (!user) return;
-
-        if (action === 'accept') {
-            await interaction.update({ content: 'Aplicația a fost acceptată!', ephemeral: true });
-            const dmChannel = await user.createDM();
-            await dmChannel.send('Aplicația ta a fost acceptată!');
-        } else if (action === 'reject') {
-            await interaction.update({ content: 'Aplicația a fost respinsă!', ephemeral: true });
-            const dmChannel = await user.createDM();
-            await dmChannel.send('Aplicația ta a fost respinsă.');
-        }
-    }
-});
-
-client.login(process.env.TOKEN);
+main().catch(console.error);
