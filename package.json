@@ -1,13 +1,12 @@
 {
-  "name": "eugvrp-bot",
+  "name": "EUGVRP Bot",
   "version": "1.0.0",
-  "description": "Bot avansat pentru EUGVRP România",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
+  "description": "Discord bot for EUGVRP/Greenville RP server",
+  "author": "Your Name",
+  "license": "MIT",
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5"
+    "discord.js": "^14.0.0",
+    "dotenv": "^10.0.0",
+    "express": "^4.18.2"
   }
 }
