@@ -511,7 +511,7 @@ async function registerCommands() {
                 description: 'Trimite un apel de urgență',
                 options: [
                     { name: 'locatie', type: 'STRING', description: 'Locația problemei' },
-                    { name: 'situatie', type: 'STRING', description: = 'Descriere a situației' }
+                    { name: 'situatie', type: 'STRING', description: 'Descriere a situației' }
                 ]
             }
         ]);
