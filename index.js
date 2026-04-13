@@ -146,7 +146,23 @@ const commands = [
         .addStringOption(option =>
             option.setName('link')
                 .setDescription('Link-ul serverului Roblox privat')
-                .setRequired(true)),
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('locatie')
+                .setDescription('Locația sesiunii')
+                .setRequired(true)
+                .addChoices(
+                    { name: '🗺️ RoadMap', value: 'RoadMap' },
+                    { name: '🏘️ BrookeMere', value: 'BrookeMere' },
+                    { name: '🌆 Horton', value: 'Horton' },
+                    { name: '🏞️ Ron Rivers', value: 'Ron Rivers' }
+                ))
+        .addIntegerOption(option =>
+            option.setName('frp')
+                .setDescription('Viteza maximă FRP (km/h)')
+                .setRequired(true)
+                .setMinValue(50)
+                .setMaxValue(300)),
 
     new SlashCommandBuilder()
         .setName('sesiune_stop')
@@ -330,7 +346,6 @@ async function handleCommand(interaction) {
             break;
     }
 }
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SISTEM SESIUNE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -356,13 +371,25 @@ async function handleSesiuneStart(interaction) {
 
     const rawLink = interaction.options.getString('link');
     const link = normalizeLink(rawLink);
+    const locatie = interaction.options.getString('locatie');
+    const frpSpeed = interaction.options.getInteger('frp');
     const startTime = Date.now();
+
+    // Emoji pentru locație
+    const locatieEmoji = {
+        'RoadMap': '🗺️',
+        'BrookeMere': '🏘️',
+        'Horton': '🌆',
+        'Ron Rivers': '🏞️'
+    };
 
     // Salvare sesiune în Map
     sessionsMap.set('active', {
         startedBy: user.id,
         startedByTag: user.tag,
         link: link,
+        locatie: locatie,
+        frpSpeed: frpSpeed,
         startTime: startTime,
         shiftsCount: 0
     });
@@ -371,33 +398,40 @@ async function handleSesiuneStart(interaction) {
     const embed = new EmbedBuilder()
         .setTitle('🎮 ═══════ SESIUNE ROLEPLAY ACTIVĂ ═══════')
         .setDescription(`
-👋 **Bun venit pe EUGVRP România!**
+╔══════════════════════════════════════╗
+       👋 **Bun venit pe EUGVRP România!**
+╚══════════════════════════════════════╝
 
-📍 **Server Roblox:** [Deschide linkul aici](${link})
-🕐 **Start:** <t:${Math.floor(startTime / 1000)}:F>
-📊 **Status:** 🟢 ACTIVĂ
+🌐 **Server Roblox:** [Click pentru a intra](${link})
+🕐 **Ora start:** <t:${Math.floor(startTime / 1000)}:F>
+📊 **Status:** 🟢 **ACTIVĂ**
 
-⚡ **Intră rapid pe server și începe să te joci!**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ *Intră rapid pe server și începe aventura!*
         `)
         .setColor(CONFIG.colors.session)
         .addFields(
-            { name: '👤 👑 Session Host', value: `<@${user.id}>`, inline: true },
-            { name: '👥 🔥 Membri în tură', value: '`0`', inline: true },
-            { name: '🔗 🎮 Link Server', value: `${link}`, inline: false }
+            { name: '👑 Session Host', value: `<@${user.id}>`, inline: true },
+            { name: '👥 Membri în tură', value: '`0`', inline: true },
+            { name: '📊 Status', value: '🟢 Activă', inline: true },
+            { name: `${locatieEmoji[locatie] || '📍'} Locație`, value: `**${locatie}**`, inline: true },
+            { name: '🚗 FRP Viteză Max', value: `**${frpSpeed} km/h**`, inline: true },
+            { name: '🔗 Link Server', value: `[Deschide](${link})`, inline: true }
         )
         .setFooter({ text: '🎮 EUGVRP România • Sesiune Roleplay', iconURL: guild.iconURL() })
-        .setTimestamp();
+        .setTimestamp()
+        .setThumbnail(guild.iconURL({ size: 128 }));
 
     // Butoane pentru intrare pe server
     const row = new ActionRowBuilder()
         .addComponents(
             new ButtonBuilder()
-                .setLabel('🌐 Deschide linkul sesiune')
+                .setLabel('🌐 Deschide Server')
                 .setStyle(ButtonStyle.Link)
                 .setURL(link),
             new ButtonBuilder()
                 .setCustomId('join_server')
-                .setLabel('🔒 Link privat')
+                .setLabel('🔒 Link Privat')
                 .setStyle(ButtonStyle.Success)
         );
 
@@ -417,7 +451,7 @@ async function handleSesiuneStart(interaction) {
 
         // Răspuns ephemeral
         await interaction.reply({
-            content: '✅ **Sesiunea a fost pornită cu succes!** Jucătorii pot vedea sesiunea în <#' + CONFIG.channels.sesiune + '>',
+            content: `✅ **Sesiunea a fost pornită cu succes!**\n📍 Locație: **${locatie}**\n🚗 FRP: **${frpSpeed} km/h**\n\nJucătorii pot vedea sesiunea în <#${CONFIG.channels.sesiune}>`,
             flags: MessageFlags.Ephemeral
         });
 
@@ -426,9 +460,11 @@ async function handleSesiuneStart(interaction) {
             .setTitle('📋 LOG: Sesiune pornită')
             .setColor(CONFIG.colors.session)
             .addFields(
-                { name: '👤 👑 Host', value: `<@${user.id}> (${user.tag})` },
-                { name: '🔗 🎮 Link', value: link },
-                { name: '🕐 ⏰ Ora', value: `<t:${Math.floor(startTime / 1000)}:F>` }
+                { name: '👑 Host', value: `<@${user.id}> (${user.tag})` },
+                { name: '🔗 Link', value: link },
+                { name: '📍 Locație', value: locatie, inline: true },
+                { name: '🚗 FRP', value: `${frpSpeed} km/h`, inline: true },
+                { name: '🕐 Ora', value: `<t:${Math.floor(startTime / 1000)}:F>` }
             )
             .setTimestamp();
         await sendLog(guild, logEmbed);
@@ -483,11 +519,11 @@ Mulțumim tuturor jucătorilor pentru participare! 👏
         `)
         .setColor(CONFIG.colors.warning)
         .addFields(
-            { name: '👤 👑 Oprit de', value: `<@${user.id}>`, inline: true },
-            { name: '⏱️ ⏰ Durată totală', value: formatDuration(duration), inline: true },
+            { name: '👑 Oprit de', value: `<@${user.id}>`, inline: true },
+            { name: '⏱️ Durată totală', value: formatDuration(duration), inline: true },
             { name: '\u200b', value: '\u200b', inline: true },
-            { name: '👥 🔥 Membri activi', value: `${activeShifts.length}`, inline: true },
-            { name: '🚔 📋 Ture totale', value: `${session.shiftsCount}`, inline: true },
+            { name: '👥 Membri activi', value: `${activeShifts.length}`, inline: true },
+            { name: '🚔 Ture totale', value: `${session.shiftsCount}`, inline: true },
             { name: '\u200b', value: '\u200b', inline: true }
         )
         .setFooter({ text: '🎮 EUGVRP România • Raport Sesiune', iconURL: guild.iconURL() })
@@ -521,8 +557,8 @@ Mulțumim tuturor jucătorilor pentru participare! 👏
         .setTitle('📋 LOG: Sesiune oprită')
         .setColor(CONFIG.colors.warning)
         .addFields(
-            { name: '👤 👑 Oprit de', value: `<@${user.id}> (${user.tag})` },
-            { name: '⏱️ ⏰ Durată', value: formatDuration(duration) }
+            { name: '👑 Oprit de', value: `<@${user.id}> (${user.tag})` },
+            { name: '⏱️ Durată', value: formatDuration(duration) }
         )
         .setTimestamp();
     await sendLog(guild, logEmbed);
@@ -558,12 +594,12 @@ async function handleSesiuneStatus(interaction) {
         `)
         .setColor(CONFIG.colors.session)
         .addFields(
-            { name: '👤 👑 Host', value: `<@${session.startedBy}>`, inline: true },
-            { name: '🕐 ⏰ Start', value: `<t:${Math.floor(session.startTime / 1000)}:F>`, inline: true },
-            { name: '⏱️ ⌛ Durată', value: formatDuration(duration), inline: true },
-            { name: '📊 📈 Status', value: '🟢 ACTIVĂ', inline: true },
-            { name: '👥 🔥 În tură', value: `${activeShifts.length}`, inline: true },
-            { name: '🚔 📋 Ture totale', value: `${session.shiftsCount}`, inline: true }
+            { name: '👑 Host', value: `<@${session.startedBy}>`, inline: true },
+            { name: '🕐 Start', value: `<t:${Math.floor(session.startTime / 1000)}:F>`, inline: true },
+            { name: '⏱️ Durată', value: formatDuration(duration), inline: true },
+            { name: '📊 Status', value: '🟢 ACTIVĂ', inline: true },
+            { name: '👥 În tură', value: `${activeShifts.length}`, inline: true },
+            { name: '🚔 Ture totale', value: `${session.shiftsCount}`, inline: true }
         )
         .setFooter({ text: '🎮 EUGVRP România', iconURL: guild.iconURL() })
         .setTimestamp();
@@ -582,55 +618,69 @@ async function handleSesiuneVote(interaction) {
         });
     }
 
-    // Creare embed pentru vot
-    const voteEmbed = new EmbedBuilder()
-        .setTitle('🗳️ ═══════ VOT SESIUNE ROLEPLAY ═══════')
-        .setDescription(`
-🎮 **O nouă sesiune roleplay se pregătește!**
-
-💬 Sunteți pregătiți pentru acțiune?
-🗳️ Votați mai jos dacă doriți să începem sesiunea!
-
-⚠️ **Votul este anonim - nimeni nu vede cine a votat ce!**
-        `)
-        .setColor(CONFIG.colors.vote)
-        .addFields(
-            { name: '✅ DA - Sunt pregătit!', value: '`0` voturi', inline: true },
-            { name: '❌ NU - Nu acum', value: '`0` voturi', inline: true }
-        )
-        .setFooter({ text: '🎮 EUGVRP România • Sistem de Votare', iconURL: guild.iconURL() })
-        .setTimestamp();
-
-    const row = new ActionRowBuilder()
-        .addComponents(
-            new ButtonBuilder()
-                .setCustomId('vote_da')
-                .setLabel('✅ DA - Sunt pregătit!')
-                .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-                .setCustomId('vote_nu')
-                .setLabel('❌ NU - Nu acum')
-                .setStyle(ButtonStyle.Danger),
-            new ButtonBuilder()
-                .setCustomId('vote_results')
-                .setLabel('📊 Vezi rezultate')
-                .setStyle(ButtonStyle.Secondary)
-        );
-
     // Initialize vote tracking
     const voteId = `vote_${Date.now()}`;
     votesMap.set(voteId, {
         da: [],
         nu: [],
         createdBy: user.id,
-        messageId: null
+        messageId: null,
+        voteId: voteId
     });
+
+    // Creare embed pentru vot - mai frumos și organizat
+    const voteEmbed = new EmbedBuilder()
+        .setTitle('🗳️ ═══════ VOT SESIUNE ROLEPLAY ═══════')
+        .setDescription(`
+╔══════════════════════════════════════╗
+   🎮 **O NOUĂ SESIUNE SE PREGĂTEȘTE!**
+╚══════════════════════════════════════╝
+
+📢 **Atenție, jucători!**
+Un Session Host dorește să pornească o sesiune de roleplay!
+
+🤔 **Ești pregătit să intri în joc?**
+Votează mai jos pentru a ne spune părerea ta!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        `)
+        .setColor(CONFIG.colors.vote)
+        .addFields(
+            { name: '✅ DA - Sunt pregătit!', value: '```\n🟢 0 voturi\n```', inline: true },
+            { name: '❌ NU - Nu acum', value: '```\n🔴 0 voturi\n```', inline: true },
+            { name: '\u200b', value: '\u200b', inline: true },
+            { name: '📊 Total Participanți', value: '```\n👥 0 persoane\n```', inline: true },
+            { name: '👑 Inițiat de', value: `<@${user.id}>`, inline: true },
+            { name: '⏰ Ora', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România • Sistem de Votare | Votul este anonim pentru ceilalți jucători', iconURL: guild.iconURL() })
+        .setTimestamp()
+        .setThumbnail(guild.iconURL({ size: 128 }));
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`vote_da_${voteId}`)
+                .setLabel('✅ DA - Sunt pregătit!')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('🎮'),
+            new ButtonBuilder()
+                .setCustomId(`vote_nu_${voteId}`)
+                .setLabel('❌ NU - Nu acum')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('⏸️'),
+            new ButtonBuilder()
+                .setCustomId(`vote_results_${voteId}`)
+                .setLabel('📋 Vezi cine a votat')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('👀')
+        );
 
     // Trimitere în canalul de sesiune
     const sesiuneChannel = guild.channels.cache.get(CONFIG.channels.sesiune);
     if (sesiuneChannel) {
         const message = await sesiuneChannel.send({
-            content: `<@&${CONFIG.roles.cetateni}> @everyone @here 🗳️ **VOT PENTRU SESIUNE!**`,
+            content: `<@&${CONFIG.roles.cetateni}> @everyone @here\n\n🗳️ **VOT PENTRU SESIUNE ROLEPLAY!** 🗳️`,
             embeds: [voteEmbed],
             components: [row]
         });
@@ -642,11 +692,10 @@ async function handleSesiuneVote(interaction) {
     }
 
     await interaction.reply({
-        content: '✅ **Votul a fost pornit!** Jucătorii pot vota acum în <#' + CONFIG.channels.sesiune + '>',
+        content: '✅ **Votul a fost pornit!** Jucătorii pot vota acum în <#' + CONFIG.channels.sesiune + '>\n\n💡 **Sfat:** Apasă pe butonul "📋 Vezi cine a votat" pentru a vedea votanții în timp real!',
         flags: MessageFlags.Ephemeral
     });
 }
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SISTEM TURE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -708,9 +757,9 @@ async function handleTuraStart(interaction) {
         `)
         .setColor(getDepartmentColor(department))
         .addFields(
-            { name: '👤 👮 Utilizator', value: `<@${user.id}>`, inline: true },
-            { name: '🏢 🏛️ Departament', value: getDepartmentName(department), inline: true },
-            { name: '🕐 ⏰ Ora start', value: `<t:${Math.floor(startTime / 1000)}:F>`, inline: true }
+            { name: '👮 Utilizator', value: `<@${user.id}>`, inline: true },
+            { name: '🏢 Departament', value: getDepartmentName(department), inline: true },
+            { name: '🕐 Ora start', value: `<t:${Math.floor(startTime / 1000)}:F>`, inline: true }
         )
         .setFooter({ text: '🎮 EUGVRP România • Sistem Ture', iconURL: guild.iconURL() })
         .setTimestamp();
@@ -731,9 +780,9 @@ async function handleTuraStart(interaction) {
         .setTitle('📋 LOG: Tură pornită')
         .setColor(getDepartmentColor(department))
         .addFields(
-            { name: '👤 👮 Utilizator', value: `<@${user.id}> (${user.tag})` },
-            { name: '🏢 🏛️ Departament', value: getDepartmentName(department) },
-            { name: '🕐 ⏰ Ora', value: `<t:${Math.floor(startTime / 1000)}:F>` }
+            { name: '👮 Utilizator', value: `<@${user.id}> (${user.tag})` },
+            { name: '🏢 Departament', value: getDepartmentName(department) },
+            { name: '🕐 Ora', value: `<t:${Math.floor(startTime / 1000)}:F>` }
         )
         .setTimestamp();
     await sendLog(guild, logEmbed);
@@ -776,12 +825,12 @@ async function handleTuraStop(interaction) {
         `)
         .setColor(getDepartmentColor(shift.department))
         .addFields(
-            { name: '👤 👮 Utilizator', value: `<@${user.id}>`, inline: true },
-            { name: '🏢 🏛️ Departament', value: getDepartmentName(shift.department), inline: true },
+            { name: '👮 Utilizator', value: `<@${user.id}>`, inline: true },
+            { name: '🏢 Departament', value: getDepartmentName(shift.department), inline: true },
             { name: '\u200b', value: '\u200b', inline: true },
-            { name: '🕐 ⏰ Ora start', value: `<t:${Math.floor(shift.startTime / 1000)}:F>`, inline: true },
-            { name: '🕐 ⏹️ Ora stop', value: `<t:${Math.floor(endTime / 1000)}:F>`, inline: true },
-            { name: '⏱️ ⌛ Durată', value: formatDuration(duration), inline: true }
+            { name: '🕐 Ora start', value: `<t:${Math.floor(shift.startTime / 1000)}:F>`, inline: true },
+            { name: '🕐 Ora stop', value: `<t:${Math.floor(endTime / 1000)}:F>`, inline: true },
+            { name: '⏱️ Durată', value: formatDuration(duration), inline: true }
         )
         .setFooter({ text: '🎮 EUGVRP România • Sistem Ture', iconURL: guild.iconURL() })
         .setTimestamp();
@@ -802,9 +851,9 @@ async function handleTuraStop(interaction) {
         .setTitle('📋 LOG: Tură oprită')
         .setColor(getDepartmentColor(shift.department))
         .addFields(
-            { name: '👤 👮 Utilizator', value: `<@${user.id}> (${user.tag})` },
-            { name: '🏢 🏛️ Departament', value: getDepartmentName(shift.department) },
-            { name: '⏱️ ⌛ Durată', value: formatDuration(duration) }
+            { name: '👮 Utilizator', value: `<@${user.id}> (${user.tag})` },
+            { name: '🏢 Departament', value: getDepartmentName(shift.department) },
+            { name: '⏱️ Durată', value: formatDuration(duration) }
         )
         .setTimestamp();
     await sendLog(guild, logEmbed);
@@ -833,10 +882,10 @@ async function handleTuraStatus(interaction) {
         `)
         .setColor(getDepartmentColor(shift.department))
         .addFields(
-            { name: '🏢 🏛️ Departament', value: getDepartmentName(shift.department), inline: true },
-            { name: '🕐 ⏰ Ora start', value: `<t:${Math.floor(shift.startTime / 1000)}:F>`, inline: true },
-            { name: '⏱️ ⌛ Durată curentă', value: formatDuration(duration), inline: true },
-            { name: '📊 📈 Status', value: '🟢 Activ', inline: true }
+            { name: '🏢 Departament', value: getDepartmentName(shift.department), inline: true },
+            { name: '🕐 Ora start', value: `<t:${Math.floor(shift.startTime / 1000)}:F>`, inline: true },
+            { name: '⏱️ Durată curentă', value: formatDuration(duration), inline: true },
+            { name: '📊 Status', value: '🟢 Activ', inline: true }
         )
         .setFooter({ text: '🎮 EUGVRP România', iconURL: guild.iconURL() })
         .setTimestamp();
@@ -872,9 +921,9 @@ async function handleRadio(interaction) {
         `)
         .setColor(CONFIG.colors.radio)
         .addFields(
-            { name: '👤 👮 De la', value: `<@${user.id}>`, inline: true },
-            { name: '🏢 🏛️ Departament', value: `${getDepartmentEmoji(shift.department)} ${getDepartmentName(shift.department)}`, inline: true },
-            { name: '🕐 ⏰ Ora', value: `<t:${Math.floor(Date.now() / 1000)}:t>`, inline: true }
+            { name: '👮 De la', value: `<@${user.id}>`, inline: true },
+            { name: '🏢 Departament', value: `${getDepartmentEmoji(shift.department)} ${getDepartmentName(shift.department)}`, inline: true },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:t>`, inline: true }
         )
         .setFooter({ text: '🎮 EUGVRP România • Sistem Radio', iconURL: guild.iconURL() })
         .setTimestamp();
@@ -895,9 +944,9 @@ async function handleRadio(interaction) {
         .setTitle('📋 LOG: Radio')
         .setColor(CONFIG.colors.radio)
         .addFields(
-            { name: '👤 👮 De la', value: `<@${user.id}> (${user.tag})` },
-            { name: '🏢 🏛️ Departament', value: getDepartmentName(shift.department) },
-            { name: '💬 📝 Mesaj', value: mesaj }
+            { name: '👮 De la', value: `<@${user.id}> (${user.tag})` },
+            { name: '🏢 Departament', value: getDepartmentName(shift.department) },
+            { name: '💬 Mesaj', value: mesaj }
         )
         .setTimestamp();
     await sendLog(guild, logEmbed);
@@ -926,9 +975,9 @@ async function handle112(interaction) {
         `)
         .setColor(CONFIG.colors.emergency)
         .addFields(
-            { name: '👤 📞 Apelant', value: `<@${user.id}>`, inline: true },
-            { name: '📍 📍 Locație', value: locatie, inline: true },
-            { name: '🕐 ⏰ Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+            { name: '📞 Apelant', value: `<@${user.id}>`, inline: true },
+            { name: '📍 Locație', value: locatie, inline: true },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
         )
         .setFooter({ text: '🎮 EUGVRP România • Dispecerat 112', iconURL: guild.iconURL() })
         .setTimestamp();
@@ -952,9 +1001,9 @@ async function handle112(interaction) {
         .setTitle('📋 LOG: Apel 112')
         .setColor(CONFIG.colors.emergency)
         .addFields(
-            { name: '👤 📞 Apelant', value: `<@${user.id}> (${user.tag})` },
-            { name: '📍 📍 Locație', value: locatie },
-            { name: '💬 📝 Detalii', value: mesaj }
+            { name: '📞 Apelant', value: `<@${user.id}> (${user.tag})` },
+            { name: '📍 Locație', value: locatie },
+            { name: '💬 Detalii', value: mesaj }
         )
         .setTimestamp();
     await sendLog(guild, logEmbed);
@@ -988,8 +1037,8 @@ async function handlePanic(interaction) {
         `)
         .setColor(CONFIG.colors.panic)
         .addFields(
-            { name: '👤 👮 Ofițer', value: `<@${user.id}>`, inline: true },
-            { name: '🕐 ⏰ Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+            { name: '👮 Ofițer', value: `<@${user.id}>`, inline: true },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
         )
         .setFooter({ text: '🎮 EUGVRP România • Panic Button', iconURL: guild.iconURL() })
         .setTimestamp();
@@ -1013,8 +1062,8 @@ async function handlePanic(interaction) {
         .setTitle('📋 LOG: PANIC BUTTON')
         .setColor(CONFIG.colors.panic)
         .addFields(
-            { name: '👤 👮 Ofițer', value: `<@${user.id}> (${user.tag})` },
-            { name: '🕐 ⏰ Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
+            { name: '👮 Ofițer', value: `<@${user.id}> (${user.tag})` },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
         )
         .setTimestamp();
     await sendLog(guild, logEmbed);
@@ -1040,11 +1089,11 @@ async function handleStats(interaction) {
         `)
         .setColor(stats.department ? getDepartmentColor(stats.department) : CONFIG.colors.session)
         .addFields(
-            { name: '👤 👤 Utilizator', value: `<@${targetUser.id}>`, inline: true },
-            { name: '🏢 🏛️ Departament', value: stats.department ? `${getDepartmentEmoji(stats.department)} ${getDepartmentName(stats.department)}` : '❌ Niciunul', inline: true },
+            { name: '👤 Utilizator', value: `<@${targetUser.id}>`, inline: true },
+            { name: '🏢 Departament', value: stats.department ? `${getDepartmentEmoji(stats.department)} ${getDepartmentName(stats.department)}` : '❌ Niciunul', inline: true },
             { name: '\u200b', value: '\u200b', inline: true },
-            { name: '📋 📝 Total ture', value: `${stats.totalShifts}`, inline: true },
-            { name: '⏱️ ⌛ Timp total', value: `${hours}h ${minutes}m`, inline: true },
+            { name: '📋 Total ture', value: `${stats.totalShifts}`, inline: true },
+            { name: '⏱️ Timp total', value: `${hours}h ${minutes}m`, inline: true },
             { name: '\u200b', value: '\u200b', inline: true }
         )
         .setFooter({ text: '🎮 EUGVRP România', iconURL: interaction.guild.iconURL() })
@@ -1122,9 +1171,9 @@ async function handleApply(interaction) {
         `)
         .setColor(departmentColor)
         .addFields(
-            { name: '👤 👤 Utilizator', value: `<@${user.id}> (${user.tag})` },
-            { name: '🏢 🏛️ Departament', value: `${getDepartmentEmoji(departament)} ${departmentName}` },
-            { name: '🕐 ⏰ Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
+            { name: '👤 Utilizator', value: `<@${user.id}> (${user.tag})` },
+            { name: '🏢 Departament', value: `${getDepartmentEmoji(departament)} ${departmentName}` },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
         )
         .setFooter({ text: '🎮 EUGVRP România • Sistem Aplicații', iconURL: guild.iconURL() })
         .setTimestamp();
@@ -1224,8 +1273,8 @@ async function handleTicket(interaction) {
         `)
         .setColor(CONFIG.colors.ticket)
         .addFields(
-            { name: '👤 👤 Utilizator', value: `<@${user.id}> (${user.tag})` },
-            { name: '🕐 ⏰ Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
+            { name: '👤 Utilizator', value: `<@${user.id}> (${user.tag})` },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
         )
         .setFooter({ text: '🎮 EUGVRP România • Sistem Ticket-uri', iconURL: guild.iconURL() })
         .setTimestamp();
@@ -1306,8 +1355,8 @@ async function handleReload(interaction) {
             `)
             .setColor(CONFIG.colors.success)
             .addFields(
-                { name: '👑 👑 Reîncărcat de', value: `<@${user.id}> **(OWNER)**` },
-                { name: '🕐 ⏰ Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
+                { name: '👑 Reîncărcat de', value: `<@${user.id}> **(OWNER)**` },
+                { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
             )
             .setFooter({ text: '🎮 EUGVRP România', iconURL: guild.iconURL() })
             .setTimestamp();
@@ -1319,8 +1368,8 @@ async function handleReload(interaction) {
             .setTitle('📋 LOG: Comenzile reîncărcate')
             .setColor(CONFIG.colors.success)
             .addFields(
-                { name: '👑 👑 De', value: `<@${user.id}> (${user.tag}) **OWNER**` },
-                { name: '📊 📈 Comenzi', value: `${commands.length}` }
+                { name: '👑 De', value: `<@${user.id}> (${user.tag}) **OWNER**` },
+                { name: '📊 Comenzi', value: `${commands.length}` }
             )
             .setTimestamp();
         await sendLog(guild, logEmbed);
@@ -1333,7 +1382,1044 @@ async function handleReload(interaction) {
         });
     }
 }
+// ═══════════════════════════════════════════════════════════════════════════════
+// SISTEM SESIUNE
+// ═══════════════════════════════════════════════════════════════════════════════
 
+async function handleSesiuneStart(interaction) {
+    const { guild, member, user } = interaction;
+
+    // Verificare rol Session Host
+    if (!hasRole(member, CONFIG.roles.sessionHost)) {
+        return interaction.reply({
+            content: '❌ **ACCES REFUZAT!** Doar membrii cu rolul <@&' + CONFIG.roles.sessionHost + '> pot porni sesiuni roleplay.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    // Verificare dacă există deja o sesiune activă
+    if (sessionsMap.has('active')) {
+        return interaction.reply({
+            content: '❌ **Există deja o sesiune activă!** Folosește `/sesiune_stop` pentru a o opri.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    const rawLink = interaction.options.getString('link');
+    const link = normalizeLink(rawLink);
+    const locatie = interaction.options.getString('locatie');
+    const frpSpeed = interaction.options.getInteger('frp');
+    const startTime = Date.now();
+
+    // Emoji pentru locație
+    const locatieEmoji = {
+        'RoadMap': '🗺️',
+        'BrookeMere': '🏘️',
+        'Horton': '🌆',
+        'Ron Rivers': '🏞️'
+    };
+
+    // Salvare sesiune în Map
+    sessionsMap.set('active', {
+        startedBy: user.id,
+        startedByTag: user.tag,
+        link: link,
+        locatie: locatie,
+        frpSpeed: frpSpeed,
+        startTime: startTime,
+        shiftsCount: 0
+    });
+
+    // Creare embed profesional
+    const embed = new EmbedBuilder()
+        .setTitle('🎮 ═══════ SESIUNE ROLEPLAY ACTIVĂ ═══════')
+        .setDescription(`
+╔══════════════════════════════════════╗
+       👋 **Bun venit pe EUGVRP România!**
+╚══════════════════════════════════════╝
+
+🌐 **Server Roblox:** [Click pentru a intra](${link})
+🕐 **Ora start:** <t:${Math.floor(startTime / 1000)}:F>
+📊 **Status:** 🟢 **ACTIVĂ**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ *Intră rapid pe server și începe aventura!*
+        `)
+        .setColor(CONFIG.colors.session)
+        .addFields(
+            { name: '👑 Session Host', value: `<@${user.id}>`, inline: true },
+            { name: '👥 Membri în tură', value: '`0`', inline: true },
+            { name: '📊 Status', value: '🟢 Activă', inline: true },
+            { name: `${locatieEmoji[locatie] || '📍'} Locație`, value: `**${locatie}**`, inline: true },
+            { name: '🚗 FRP Viteză Max', value: `**${frpSpeed} km/h**`, inline: true },
+            { name: '🔗 Link Server', value: `[Deschide](${link})`, inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România • Sesiune Roleplay', iconURL: guild.iconURL() })
+        .setTimestamp()
+        .setThumbnail(guild.iconURL({ size: 128 }));
+
+    // Butoane pentru intrare pe server
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setLabel('🌐 Deschide Server')
+                .setStyle(ButtonStyle.Link)
+                .setURL(link),
+            new ButtonBuilder()
+                .setCustomId('join_server')
+                .setLabel('🔒 Link Privat')
+                .setStyle(ButtonStyle.Success)
+        );
+
+    // Trimitere în canalul de sesiune
+    try {
+        const sesiuneChannel = guild.channels.cache.get(CONFIG.channels.sesiune);
+        if (sesiuneChannel) {
+            const message = await sesiuneChannel.send({
+                content: `<@&${CONFIG.roles.cetateni}> <@&${CONFIG.roles.politie}> <@&${CONFIG.roles.pompieri}> <@&${CONFIG.roles.dot}> <@&${CONFIG.roles.earlyAccess}> @everyone @here`,
+                embeds: [embed],
+                components: [row]
+            });
+            sessionsMap.get('active').messageId = message.id;
+        } else {
+            console.error('❌ Canalul de sesiune nu a fost găsit!');
+        }
+
+        // Răspuns ephemeral
+        await interaction.reply({
+            content: `✅ **Sesiunea a fost pornită cu succes!**\n📍 Locație: **${locatie}**\n🚗 FRP: **${frpSpeed} km/h**\n\nJucătorii pot vedea sesiunea în <#${CONFIG.channels.sesiune}>`,
+            flags: MessageFlags.Ephemeral
+        });
+
+        // Log
+        const logEmbed = new EmbedBuilder()
+            .setTitle('📋 LOG: Sesiune pornită')
+            .setColor(CONFIG.colors.session)
+            .addFields(
+                { name: '👑 Host', value: `<@${user.id}> (${user.tag})` },
+                { name: '🔗 Link', value: link },
+                { name: '📍 Locație', value: locatie, inline: true },
+                { name: '🚗 FRP', value: `${frpSpeed} km/h`, inline: true },
+                { name: '🕐 Ora', value: `<t:${Math.floor(startTime / 1000)}:F>` }
+            )
+            .setTimestamp();
+        await sendLog(guild, logEmbed);
+
+    } catch (error) {
+        console.error('❌ Eroare la trimiterea sesiunii:', error);
+        await interaction.reply({
+            content: '❌ **Eroare la pornirea sesiunii!** Verifică permisiunile botului.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+}
+
+async function handleSesiuneStop(interaction) {
+    const { guild, member, user } = interaction;
+
+    // Verificare rol Session Host
+    if (!hasRole(member, CONFIG.roles.sessionHost)) {
+        return interaction.reply({
+            content: '❌ **ACCES REFUZAT!** Doar membrii cu rolul <@&' + CONFIG.roles.sessionHost + '> pot opri sesiuni.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    // Verificare dacă există sesiune activă
+    if (!sessionsMap.has('active')) {
+        return interaction.reply({
+            content: '❌ **Nu există nicio sesiune activă!**',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    const session = sessionsMap.get('active');
+    const endTime = Date.now();
+    const duration = endTime - session.startTime;
+
+    // Calculare membri activi în tură
+    const activeShifts = [];
+    shiftsMap.forEach((shift, userId) => {
+        if (shift.active) {
+            activeShifts.push(userId);
+        }
+    });
+
+    // Raport final sesiune
+    const reportEmbed = new EmbedBuilder()
+        .setTitle('📊 ═══════ RAPORT FINAL SESIUNE ═══════')
+        .setDescription(`
+🎮 **Sesiunea s-a încheiat!**
+
+Mulțumim tuturor jucătorilor pentru participare! 👏
+        `)
+        .setColor(CONFIG.colors.warning)
+        .addFields(
+            { name: '👑 Oprit de', value: `<@${user.id}>`, inline: true },
+            { name: '⏱️ Durată totală', value: formatDuration(duration), inline: true },
+            { name: '\u200b', value: '\u200b', inline: true },
+            { name: '👥 Membri activi', value: `${activeShifts.length}`, inline: true },
+            { name: '🚔 Ture totale', value: `${session.shiftsCount}`, inline: true },
+            { name: '\u200b', value: '\u200b', inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România • Raport Sesiune', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    // Trimitere raport în canalul de sesiune
+    const sesiuneChannel = guild.channels.cache.get(CONFIG.channels.sesiune);
+    if (sesiuneChannel) {
+        await sesiuneChannel.send({ embeds: [reportEmbed] });
+    }
+
+    // Curățare date
+    sessionsMap.delete('active');
+
+    // Oprim toate turele active
+    shiftsMap.forEach((shift, userId) => {
+        if (shift.active) {
+            shift.active = false;
+            shift.endTime = endTime;
+            shiftsMap.set(userId, shift);
+        }
+    });
+
+    await interaction.reply({
+        content: '✅ **Sesiunea a fost oprită!** Vezi raportul în <#' + CONFIG.channels.sesiune + '>',
+        flags: MessageFlags.Ephemeral
+    });
+
+    // Log
+    const logEmbed = new EmbedBuilder()
+        .setTitle('📋 LOG: Sesiune oprită')
+        .setColor(CONFIG.colors.warning)
+        .addFields(
+            { name: '👑 Oprit de', value: `<@${user.id}> (${user.tag})` },
+            { name: '⏱️ Durată', value: formatDuration(duration) }
+        )
+        .setTimestamp();
+    await sendLog(guild, logEmbed);
+}
+
+async function handleSesiuneStatus(interaction) {
+    const { guild } = interaction;
+
+    if (!sessionsMap.has('active')) {
+        return interaction.reply({
+            content: '❌ **Nu există nicio sesiune activă.**',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    const session = sessionsMap.get('active');
+    const currentTime = Date.now();
+    const duration = currentTime - session.startTime;
+
+    const activeShifts = [];
+    shiftsMap.forEach((shift, userId) => {
+        if (shift.active) {
+            activeShifts.push(userId);
+        }
+    });
+
+    const statusEmbed = new EmbedBuilder()
+        .setTitle('📊 ═══════ STATUS SESIUNE ═══════')
+        .setDescription(`
+🎮 **Sesiune Roleplay EUGVRP**
+
+📍 **Server:** Activ
+        `)
+        .setColor(CONFIG.colors.session)
+        .addFields(
+            { name: '👑 Host', value: `<@${session.startedBy}>`, inline: true },
+            { name: '🕐 Start', value: `<t:${Math.floor(session.startTime / 1000)}:F>`, inline: true },
+            { name: '⏱️ Durată', value: formatDuration(duration), inline: true },
+            { name: '📊 Status', value: '🟢 ACTIVĂ', inline: true },
+            { name: '👥 În tură', value: `${activeShifts.length}`, inline: true },
+            { name: '🚔 Ture totale', value: `${session.shiftsCount}`, inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    await interaction.reply({ embeds: [statusEmbed], flags: MessageFlags.Ephemeral });
+}
+
+async function handleSesiuneVote(interaction) {
+    const { guild, member, user } = interaction;
+
+    // Verificare rol Session Host
+    if (!hasRole(member, CONFIG.roles.sessionHost)) {
+        return interaction.reply({
+            content: '❌ **ACCES REFUZAT!** Doar membrii cu rolul <@&' + CONFIG.roles.sessionHost + '> pot porni voturi.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    // Initialize vote tracking
+    const voteId = `vote_${Date.now()}`;
+    votesMap.set(voteId, {
+        da: [],
+        nu: [],
+        createdBy: user.id,
+        messageId: null,
+        voteId: voteId
+    });
+
+    // Creare embed pentru vot - mai frumos și organizat
+    const voteEmbed = new EmbedBuilder()
+        .setTitle('🗳️ ═══════ VOT SESIUNE ROLEPLAY ═══════')
+        .setDescription(`
+╔══════════════════════════════════════╗
+   🎮 **O NOUĂ SESIUNE SE PREGĂTEȘTE!**
+╚══════════════════════════════════════╝
+
+📢 **Atenție, jucători!**
+Un Session Host dorește să pornească o sesiune de roleplay!
+
+🤔 **Ești pregătit să intri în joc?**
+Votează mai jos pentru a ne spune părerea ta!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        `)
+        .setColor(CONFIG.colors.vote)
+        .addFields(
+            { name: '✅ DA - Sunt pregătit!', value: '```\n🟢 0 voturi\n```', inline: true },
+            { name: '❌ NU - Nu acum', value: '```\n🔴 0 voturi\n```', inline: true },
+            { name: '\u200b', value: '\u200b', inline: true },
+            { name: '📊 Total Participanți', value: '```\n👥 0 persoane\n```', inline: true },
+            { name: '👑 Inițiat de', value: `<@${user.id}>`, inline: true },
+            { name: '⏰ Ora', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România • Sistem de Votare | Votul este anonim pentru ceilalți jucători', iconURL: guild.iconURL() })
+        .setTimestamp()
+        .setThumbnail(guild.iconURL({ size: 128 }));
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`vote_da_${voteId}`)
+                .setLabel('✅ DA - Sunt pregătit!')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('🎮'),
+            new ButtonBuilder()
+                .setCustomId(`vote_nu_${voteId}`)
+                .setLabel('❌ NU - Nu acum')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('⏸️'),
+            new ButtonBuilder()
+                .setCustomId(`vote_results_${voteId}`)
+                .setLabel('📋 Vezi cine a votat')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('👀')
+        );
+
+    // Trimitere în canalul de sesiune
+    const sesiuneChannel = guild.channels.cache.get(CONFIG.channels.sesiune);
+    if (sesiuneChannel) {
+        const message = await sesiuneChannel.send({
+            content: `<@&${CONFIG.roles.cetateni}> @everyone @here\n\n🗳️ **VOT PENTRU SESIUNE ROLEPLAY!** 🗳️`,
+            embeds: [voteEmbed],
+            components: [row]
+        });
+
+        // Salvare message ID
+        const voteData = votesMap.get(voteId);
+        voteData.messageId = message.id;
+        votesMap.set(voteId, voteData);
+    }
+
+    await interaction.reply({
+        content: '✅ **Votul a fost pornit!** Jucătorii pot vota acum în <#' + CONFIG.channels.sesiune + '>\n\n💡 **Sfat:** Apasă pe butonul "📋 Vezi cine a votat" pentru a vedea votanții în timp real!',
+        flags: MessageFlags.Ephemeral
+    });
+}
+PARTEA 3/4 - index.js (continuare)
+// ═══════════════════════════════════════════════════════════════════════════════
+// SISTEM TURE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function handleTuraStart(interaction) {
+    const { guild, member, user } = interaction;
+
+    // Verificare sesiune activă
+    if (!sessionsMap.has('active')) {
+        return interaction.reply({
+            content: '❌ **Nu există nicio sesiune activă!** Nu poți începe o tură fără sesiune. Folosește `/sesiune_vote` pentru a propune o sesiune.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    // Verificare roluri permise
+    const allowedRoles = [CONFIG.roles.politie, CONFIG.roles.pompieri, CONFIG.roles.dot];
+    if (!hasAnyRole(member, allowedRoles)) {
+        return interaction.reply({
+            content: '❌ **ACCES REFUZAT!** Nu ai rolul necesar pentru a începe o tură.\n\n📌 Dacă vrei să faci parte dintr-un departament, folosește `/apply` pentru a aplica.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    // Verificare dacă are deja o tură activă
+    if (shiftsMap.has(user.id) && shiftsMap.get(user.id).active) {
+        return interaction.reply({
+            content: '❌ **Ai deja o tură activă!** Folosește `/tura_stop` pentru a o opri.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    // Determinare departament
+    const department = getDepartmentFromRoles(member);
+    const startTime = Date.now();
+
+    // Salvare tură
+    shiftsMap.set(user.id, {
+        userId: user.id,
+        userTag: user.tag,
+        department: department,
+        startTime: startTime,
+        endTime: null,
+        active: true
+    });
+
+    // Incrementare contor ture în sesiune
+    const session = sessionsMap.get('active');
+    session.shiftsCount++;
+    sessionsMap.set('active', session);
+
+    // Creare embed
+    const embed = new EmbedBuilder()
+        .setTitle(`${getDepartmentEmoji(department)} ═══════ TURĂ ÎNCEPUTĂ ═══════`)
+        .setDescription(`
+🎮 **Un membru a intrat în tură!**
+
+📍 Departament: **${getDepartmentName(department)}**
+        `)
+        .setColor(getDepartmentColor(department))
+        .addFields(
+            { name: '👮 Utilizator', value: `<@${user.id}>`, inline: true },
+            { name: '🏢 Departament', value: getDepartmentName(department), inline: true },
+            { name: '🕐 Ora start', value: `<t:${Math.floor(startTime / 1000)}:F>`, inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România • Sistem Ture', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    // Trimitere în canalul de ture
+    const tureChannel = guild.channels.cache.get(CONFIG.channels.ture);
+    if (tureChannel) {
+        await tureChannel.send({ embeds: [embed] });
+    }
+
+    await interaction.reply({
+        content: `✅ **Tură începută!** Ești activ în departamentul **${getDepartmentName(department)}** ${getDepartmentEmoji(department)}`,
+        flags: MessageFlags.Ephemeral
+    });
+
+    // Log
+    const logEmbed = new EmbedBuilder()
+        .setTitle('📋 LOG: Tură pornită')
+        .setColor(getDepartmentColor(department))
+        .addFields(
+            { name: '👮 Utilizator', value: `<@${user.id}> (${user.tag})` },
+            { name: '🏢 Departament', value: getDepartmentName(department) },
+            { name: '🕐 Ora', value: `<t:${Math.floor(startTime / 1000)}:F>` }
+        )
+        .setTimestamp();
+    await sendLog(guild, logEmbed);
+}
+
+async function handleTuraStop(interaction) {
+    const { guild, user } = interaction;
+
+    // Verificare dacă are o tură activă
+    if (!shiftsMap.has(user.id) || !shiftsMap.get(user.id).active) {
+        return interaction.reply({
+            content: '❌ **Nu ai nicio tură activă!** Folosește `/tura_start` pentru a începe o tură.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    const shift = shiftsMap.get(user.id);
+    const endTime = Date.now();
+    const duration = endTime - shift.startTime;
+
+    // Actualizare tură
+    shift.active = false;
+    shift.endTime = endTime;
+    shiftsMap.set(user.id, shift);
+
+    // Actualizare statistici
+    const stats = initializeUserStats(user.id);
+    stats.totalShifts++;
+    stats.totalMinutes += Math.floor(duration / 60000);
+    stats.department = shift.department;
+    statsMap.set(user.id, stats);
+
+    // Creare embed raport
+    const embed = new EmbedBuilder()
+        .setTitle(`${getDepartmentEmoji(shift.department)} ═══════ TURĂ FINALIZATĂ ═══════`)
+        .setDescription(`
+🎮 **Tură încheiată cu succes!**
+
+📊 Mulțumim pentru serviciu!
+        `)
+        .setColor(getDepartmentColor(shift.department))
+        .addFields(
+            { name: '👮 Utilizator', value: `<@${user.id}>`, inline: true },
+            { name: '🏢 Departament', value: getDepartmentName(shift.department), inline: true },
+            { name: '\u200b', value: '\u200b', inline: true },
+            { name: '🕐 Ora start', value: `<t:${Math.floor(shift.startTime / 1000)}:F>`, inline: true },
+            { name: '🕐 Ora stop', value: `<t:${Math.floor(endTime / 1000)}:F>`, inline: true },
+            { name: '⏱️ Durată', value: formatDuration(duration), inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România • Sistem Ture', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    // Trimitere în canalul de ture
+    const tureChannel = guild.channels.cache.get(CONFIG.channels.ture);
+    if (tureChannel) {
+        await tureChannel.send({ embeds: [embed] });
+    }
+
+    await interaction.reply({
+        content: `✅ **Tură finalizată!** Durată: **${formatDuration(duration)}** ${getDepartmentEmoji(shift.department)}`,
+        flags: MessageFlags.Ephemeral
+    });
+
+    // Log
+    const logEmbed = new EmbedBuilder()
+        .setTitle('📋 LOG: Tură oprită')
+        .setColor(getDepartmentColor(shift.department))
+        .addFields(
+            { name: '👮 Utilizator', value: `<@${user.id}> (${user.tag})` },
+            { name: '🏢 Departament', value: getDepartmentName(shift.department) },
+            { name: '⏱️ Durată', value: formatDuration(duration) }
+        )
+        .setTimestamp();
+    await sendLog(guild, logEmbed);
+}
+
+async function handleTuraStatus(interaction) {
+    const { guild, user } = interaction;
+
+    if (!shiftsMap.has(user.id) || !shiftsMap.get(user.id).active) {
+        return interaction.reply({
+            content: '❌ **Nu ai nicio tură activă.** Folosește `/tura_start` pentru a începe o tură.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    const shift = shiftsMap.get(user.id);
+    const currentTime = Date.now();
+    const duration = currentTime - shift.startTime;
+
+    const embed = new EmbedBuilder()
+        .setTitle(`${getDepartmentEmoji(shift.department)} ═══════ STATUS TURĂ ═══════`)
+        .setDescription(`
+🎮 **Tura ta activă**
+
+📍 Departament: **${getDepartmentName(shift.department)}**
+        `)
+        .setColor(getDepartmentColor(shift.department))
+        .addFields(
+            { name: '🏢 Departament', value: getDepartmentName(shift.department), inline: true },
+            { name: '🕐 Ora start', value: `<t:${Math.floor(shift.startTime / 1000)}:F>`, inline: true },
+            { name: '⏱️ Durată curentă', value: formatDuration(duration), inline: true },
+            { name: '📊 Status', value: '🟢 Activ', inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SISTEM RADIO
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function handleRadio(interaction) {
+    const { guild, user } = interaction;
+
+    // Verificare dacă utilizatorul este în tură
+    if (!shiftsMap.has(user.id) || !shiftsMap.get(user.id).active) {
+        return interaction.reply({
+            content: '❌ **Nu ești în tură!** Trebuie să fii într-o tură activă pentru a folosi radio. Folosește `/tura_start` pentru a începe o tură.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    const shift = shiftsMap.get(user.id);
+    const mesaj = interaction.options.getString('mesaj');
+
+    // Creare embed radio
+    const embed = new EmbedBuilder()
+        .setTitle('📡 ═══════ RADIO DISPATCH ═══════')
+        .setDescription(`
+📻 **Mesaj nou pe frecvența radio!**
+
+💬 **"${mesaj}"**
+        `)
+        .setColor(CONFIG.colors.radio)
+        .addFields(
+            { name: '👮 De la', value: `<@${user.id}>`, inline: true },
+            { name: '🏢 Departament', value: `${getDepartmentEmoji(shift.department)} ${getDepartmentName(shift.department)}`, inline: true },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:t>`, inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România • Sistem Radio', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    // Trimitere în canalul de ture
+    const tureChannel = guild.channels.cache.get(CONFIG.channels.ture);
+    if (tureChannel) {
+        await tureChannel.send({ embeds: [embed] });
+    }
+
+    await interaction.reply({
+        content: '✅ **Mesaj radio trimis!** 📡',
+        flags: MessageFlags.Ephemeral
+    });
+
+    // Log
+    const logEmbed = new EmbedBuilder()
+        .setTitle('📋 LOG: Radio')
+        .setColor(CONFIG.colors.radio)
+        .addFields(
+            { name: '👮 De la', value: `<@${user.id}> (${user.tag})` },
+            { name: '🏢 Departament', value: getDepartmentName(shift.department) },
+            { name: '💬 Mesaj', value: mesaj }
+        )
+        .setTimestamp();
+    await sendLog(guild, logEmbed);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SISTEM DISPECERAT 112
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function handle112(interaction) {
+    const { guild, user } = interaction;
+
+    const locatie = interaction.options.getString('locație');
+    const mesaj = interaction.options.getString('mesaj');
+
+    // Creare embed urgență
+    const embed = new EmbedBuilder()
+        .setTitle('🚨 ═══════ 112 DISPATCH - APEL DE URGENȚĂ ═══════')
+        .setDescription(`
+📞 **A fost primit un apel de urgență!**
+
+📍 **Locație:** ${locatie}
+💬 **Detalii:** ${mesaj}
+
+⚠️ **Toate unitățile trebuie să răspundă!**
+        `)
+        .setColor(CONFIG.colors.emergency)
+        .addFields(
+            { name: '📞 Apelant', value: `<@${user.id}>`, inline: true },
+            { name: '📍 Locație', value: locatie, inline: true },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România • Dispecerat 112', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    // Trimitere în canalul de ture cu ping la departamente
+    const tureChannel = guild.channels.cache.get(CONFIG.channels.ture);
+    if (tureChannel) {
+        await tureChannel.send({
+            content: `🚨 **ALERARE GENERALĂ!** <@&${CONFIG.roles.politie}> <@&${CONFIG.roles.pompieri}> <@&${CONFIG.roles.dot}>`,
+            embeds: [embed]
+        });
+    }
+
+    await interaction.reply({
+        content: '✅ **Apelul de urgență a fost trimis!** Toate unitățile au fost alertate. 🚨',
+        flags: MessageFlags.Ephemeral
+    });
+
+    // Log
+    const logEmbed = new EmbedBuilder()
+        .setTitle('📋 LOG: Apel 112')
+        .setColor(CONFIG.colors.emergency)
+        .addFields(
+            { name: '📞 Apelant', value: `<@${user.id}> (${user.tag})` },
+            { name: '📍 Locație', value: locatie },
+            { name: '💬 Detalii', value: mesaj }
+        )
+        .setTimestamp();
+    await sendLog(guild, logEmbed);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PANIC BUTTON
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function handlePanic(interaction) {
+    const { guild, member, user } = interaction;
+
+    // Verificare rol Poliție
+    if (!hasRole(member, CONFIG.roles.politie)) {
+        return interaction.reply({
+            content: '❌ **ACCES REFUZAT!** Doar membrii cu rolul **Poliție** 🚔 pot folosi butonul de panică!',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    // Creare embed panic
+    const embed = new EmbedBuilder()
+        .setTitle('🚨🚨🚨 ═══════ OFIȚER ÎN PERICOL ═══════ 🚨🚨🚨')
+        .setDescription(`
+⚠️ **URGENT! OFIȚER ÎN PERICOL!**
+
+👮 Un ofițer de poliție solicită asistență URGENTĂ!
+📍 Toate unitățile disponibile trebuie să răspundă!
+
+🚨 **COD 10-13 - OFIȚER ÎN PERICOL!**
+        `)
+        .setColor(CONFIG.colors.panic)
+        .addFields(
+            { name: '👮 Ofițer', value: `<@${user.id}>`, inline: true },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România • Panic Button', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    // Trimitere în canalul de ture cu ping
+    const tureChannel = guild.channels.cache.get(CONFIG.channels.ture);
+    if (tureChannel) {
+        await tureChannel.send({
+            content: `@everyone 🚨🚨🚨 **PANICĂ! OFIȚER ÎN PERICOL!** 🚨🚨🚨`,
+            embeds: [embed]
+        });
+    }
+
+    await interaction.reply({
+        content: '✅ **Alerta de panică a fost trimisă!** Ajutorul vine! 🚨',
+        flags: MessageFlags.Ephemeral
+    });
+
+    // Log
+    const logEmbed = new EmbedBuilder()
+        .setTitle('📋 LOG: PANIC BUTTON')
+        .setColor(CONFIG.colors.panic)
+        .addFields(
+            { name: '👮 Ofițer', value: `<@${user.id}> (${user.tag})` },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
+        )
+        .setTimestamp();
+    await sendLog(guild, logEmbed);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// STATISTICI
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function handleStats(interaction) {
+    const targetUser = interaction.options.getUser('utilizator') || interaction.user;
+    const stats = initializeUserStats(targetUser.id);
+
+    const hours = Math.floor(stats.totalMinutes / 60);
+    const minutes = stats.totalMinutes % 60;
+
+    const embed = new EmbedBuilder()
+        .setTitle('📊 ═══════ STATISTICI JUCĂTOR ═══════')
+        .setDescription(`
+🎮 **Statistici pentru ${targetUser.username}**
+
+📈 Vezi performanța ta în joc!
+        `)
+        .setColor(stats.department ? getDepartmentColor(stats.department) : CONFIG.colors.session)
+        .addFields(
+            { name: '👤 Utilizator', value: `<@${targetUser.id}>`, inline: true },
+            { name: '🏢 Departament', value: stats.department ? `${getDepartmentEmoji(stats.department)} ${getDepartmentName(stats.department)}` : '❌ Niciunul', inline: true },
+            { name: '\u200b', value: '\u200b', inline: true },
+            { name: '📋 Total ture', value: `${stats.totalShifts}`, inline: true },
+            { name: '⏱️ Timp total', value: `${hours}h ${minutes}m`, inline: true },
+            { name: '\u200b', value: '\u200b', inline: true }
+        )
+        .setFooter({ text: '🎮 EUGVRP România', iconURL: interaction.guild.iconURL() })
+        .setTimestamp();
+
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LEADERBOARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function handleTopTure(interaction) {
+    const { guild } = interaction;
+
+    // Sortare după minute
+    const sortedStats = Array.from(statsMap.entries())
+        .sort((a, b) => b[1].totalMinutes - a[1].totalMinutes)
+        .slice(0, 10);
+
+    if (sortedStats.length === 0) {
+        return interaction.reply({
+            content: '❌ **Nu există încă statistici disponibile.** Începe o tură folosind `/tura_start`!',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    let description = '';
+    let position = 1;
+
+    for (const [userId, stats] of sortedStats) {
+        const hours = Math.floor(stats.totalMinutes / 60);
+        const minutes = stats.totalMinutes % 60;
+        const medal = position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : `**${position}.**`;
+        const departmentEmoji = stats.department ? getDepartmentEmoji(stats.department) : '👤';
+
+        description += `${medal} <@${userId}> - **${hours}h ${minutes}m** ${departmentEmoji}\n`;
+        position++;
+    }
+
+    const embed = new EmbedBuilder()
+        .setTitle('🏆 ═══════ TOP 10 MEMBRI ═══════')
+        .setDescription(`
+🎮 **Clasamentul jucătorilor activi!**
+
+${description}
+
+📌 Continuă să joci pentru a urca în clasament!
+        `)
+        .setColor(CONFIG.colors.session)
+        .setFooter({ text: '🎮 EUGVRP România • Leaderboard', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    await interaction.reply({ embeds: [embed] });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SISTEM APLICAȚII
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function handleApply(interaction) {
+    const { guild, user } = interaction;
+
+    const departament = interaction.options.getString('departament');
+    const departmentName = getDepartmentName(departament);
+    const departmentColor = getDepartmentColor(departament);
+
+    // Creare embed aplicație
+    const embed = new EmbedBuilder()
+        .setTitle('📝 ═══════ APLICAȚIE NOUĂ ═══════')
+        .setDescription(`
+📥 **Un jucător dorește să aplice!**
+
+📝 Verifică profilul și decizia!
+        `)
+        .setColor(departmentColor)
+        .addFields(
+            { name: '👤 Utilizator', value: `<@${user.id}> (${user.tag})` },
+            { name: '🏢 Departament', value: `${getDepartmentEmoji(departament)} ${departmentName}` },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
+        )
+        .setFooter({ text: '🎮 EUGVRP România • Sistem Aplicații', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`accept_${user.id}_${departament}`)
+                .setLabel('✅ Acceptă')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId(`reject_${user.id}_${departament}`)
+                .setLabel('❌ Respinge')
+                .setStyle(ButtonStyle.Danger)
+        );
+
+    // Trimitere în canalul de loguri (staff)
+    const logChannel = guild.channels.cache.get(CONFIG.channels.loguri);
+    if (logChannel) {
+        await logChannel.send({
+            content: `<@&${CONFIG.roles.sessionHost}> 📝 **APLICAȚIE NOUĂ!**`,
+            embeds: [embed],
+            components: [row]
+        });
+    }
+
+    // Salvare aplicație
+    applicationsMap.set(user.id, {
+        userId: user.id,
+        userTag: user.tag,
+        department: departament,
+        timestamp: Date.now(),
+        status: 'pending'
+    });
+
+    await interaction.reply({
+        content: `✅ **Aplicația ta pentru ${getDepartmentEmoji(departament)} ${departmentName} a fost trimisă!** Veți primi un răspuns în curând.`,
+        flags: MessageFlags.Ephemeral
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SISTEM TICKETS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function handleTicket(interaction) {
+    const { guild, user } = interaction;
+
+    const motiv = interaction.options.getString('motiv');
+
+    // Verificare dacă există deja un ticket
+    const existingTicket = ticketsMap.get(user.id);
+    if (existingTicket && existingTicket.open) {
+        return interaction.reply({
+            content: `❌ **Ai deja un ticket deschis:** <#${existingTicket.channelId}>`,
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    // Creare canal ticket
+    const ticketChannel = await guild.channels.create({
+        name: `ticket-${user.username}`,
+        type: ChannelType.GuildText,
+        permissionOverwrites: [
+            {
+                id: guild.roles.everyone,
+                deny: [PermissionFlagsBits.ViewChannel]
+            },
+            {
+                id: user.id,
+                allow: [
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.SendMessages,
+                    PermissionFlagsBits.ReadMessageHistory
+                ]
+            },
+            {
+                id: CONFIG.roles.sessionHost,
+                allow: [
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.SendMessages,
+                    PermissionFlagsBits.ReadMessageHistory
+                ]
+            }
+        ]
+    });
+
+    // Embed ticket
+    const embed = new EmbedBuilder()
+        .setTitle('🎫 ═══════ TICKET DE SUPORT ═══════')
+        .setDescription(`
+👋 **Bun venit!**
+
+📝 **Motiv:** ${motiv}
+
+💡 Un membru staff vă va ajuta în curând!
+        `)
+        .setColor(CONFIG.colors.ticket)
+        .addFields(
+            { name: '👤 Utilizator', value: `<@${user.id}> (${user.tag})` },
+            { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
+        )
+        .setFooter({ text: '🎮 EUGVRP România • Sistem Ticket-uri', iconURL: guild.iconURL() })
+        .setTimestamp();
+
+    const closeButton = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`close_ticket_${user.id}`)
+                .setLabel('🔒 Închide ticket')
+                .setStyle(ButtonStyle.Danger)
+        );
+
+    await ticketChannel.send({
+        content: `<@${user.id}> <@&${CONFIG.roles.sessionHost}>`,
+        embeds: [embed],
+        components: [closeButton]
+    });
+
+    // Salvare ticket
+    ticketsMap.set(user.id, {
+        userId: user.id,
+        channelId: ticketChannel.id,
+        reason: motiv,
+        open: true,
+        createdAt: Date.now()
+    });
+
+    await interaction.reply({
+        content: `✅ **Ticket-ul tău a fost creat:** ${ticketChannel}`,
+        flags: MessageFlags.Ephemeral
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RELOAD COMENZI
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function handleReload(interaction) {
+    const { guild, user } = interaction;
+
+    // Verificare dacă user-ul este owner-ul serverului
+    if (user.id !== guild.ownerId) {
+        return interaction.reply({
+            content: '❌ **ACCES REFUZAT!** Doar owner-ul serverului poate reîncărca comenzile.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+        // Șterge toate comenzile vechi și înregistrează cele noi
+        await guild.commands.set(commands);
+
+        const embed = new EmbedBuilder()
+            .setTitle('🔄 ═══════ RELOAD COMENZI ═══════')
+            .setDescription(`
+✅ **Comenzile au fost reîncărcate cu succes!**
+
+📋 **Comenzi disponibile:**
+• \`/sesiune_start\` - Pornește sesiune
+• \`/sesiune_stop\` - Oprește sesiune
+• \`/sesiune_status\` - Status sesiune
+• \`/sesiune_vote\` - Vot sesiune
+• \`/tura_start\` - Începe tură
+• \`/tura_stop\` - Oprește tură
+• \`/tura_status\` - Status tură
+• \`/radio\` - Mesaj radio
+• \`/112\` - Apel urgență
+• \`/panic\` - Panic button
+• \`/stats\` - Statistici
+• \`/top_ture\` - Leaderboard
+• \`/apply\` - Aplică departament
+• \`/ticket\` - Ticket suport
+• \`/reload\` - Reîncarcă comenzile
+
+⚡ **Total: ${commands.length} comenzi active!**
+            `)
+            .setColor(CONFIG.colors.success)
+            .addFields(
+                { name: '👑 Reîncărcat de', value: `<@${user.id}> **(OWNER)**` },
+                { name: '🕐 Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
+            )
+            .setFooter({ text: '🎮 EUGVRP România', iconURL: guild.iconURL() })
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+
+        // Log
+        const logEmbed = new EmbedBuilder()
+            .setTitle('📋 LOG: Comenzile reîncărcate')
+            .setColor(CONFIG.colors.success)
+            .addFields(
+                { name: '👑 De', value: `<@${user.id}> (${user.tag}) **OWNER**` },
+                { name: '📊 Comenzi', value: `${commands.length}` }
+            )
+            .setTimestamp();
+        await sendLog(guild, logEmbed);
+
+        console.log(`✅ Comenzile au fost reîncărcate de ${user.tag} (OWNER)`);
+    } catch (error) {
+        console.error('❌ Eroare la reîncărcarea comenzilor:', error);
+        await interaction.editReply({
+            content: '❌ **Eroare la reîncărcarea comenzilor!** Verifică logurile pentru detalii.'
+        });
+    }
+}
+PARTEA 4/4 - index.js (ULTIMA PARTE)
 // ═══════════════════════════════════════════════════════════════════════════════
 // HANDLER BUTOANE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1372,18 +2458,19 @@ async function handleButton(interaction) {
         });
     }
 
-    // BUTOANE VOT DA
-    if (customId === 'vote_da') {
-        const voteEntry = Array.from(votesMap.entries()).find(([k, v]) => v.messageId);
-        if (!voteEntry) {
+    // BUTOANE VOT DA (cu ID dinamic)
+    if (customId.startsWith('vote_da_')) {
+        const voteId = customId.replace('vote_da_', '');
+        const voteData = votesMap.get(voteId);
+        
+        if (!voteData) {
             return interaction.reply({
-                content: '❌ **Votul nu mai există.**',
+                content: '❌ **Votul nu mai există sau a expirat.**',
                 flags: MessageFlags.Ephemeral
             });
         }
 
-        const [voteId, voteData] = voteEntry;
-
+        // Verificare dacă a votat deja DA
         if (voteData.da.includes(user.id)) {
             return interaction.reply({
                 content: '✅ **Ai votat deja DA!** Așteaptă rezultatele.',
@@ -1399,55 +2486,28 @@ async function handleButton(interaction) {
         voteData.da.push(user.id);
         votesMap.set(voteId, voteData);
 
-        // Update the embed
-        try {
-            const sesiuneChannel = guild.channels.cache.get(CONFIG.channels.sesiune);
-            if (sesiuneChannel && voteData.messageId) {
-                const message = await sesiuneChannel.messages.fetch(voteData.messageId);
-                if (message) {
-                    const updatedEmbed = new EmbedBuilder()
-                        .setTitle('🗳️ ═══════ VOT SESIUNE ROLEPLAY ═══════')
-                        .setDescription(`
-🎮 **O nouă sesiune roleplay se pregătește!**
-
-💬 Sunteți pregătiți pentru acțiune?
-🗳️ Votați mai jos dacă doriți să începem sesiunea!
-
-⚠️ **Votul este anonim - nimeni nu vede cine a votat ce!**
-                        `)
-                        .setColor(CONFIG.colors.vote)
-                        .addFields(
-                            { name: `✅ DA - Sunt pregătit!`, value: `\`${voteData.da.length}\` voturi`, inline: true },
-                            { name: `❌ NU - Nu acum`, value: `\`${voteData.nu.length}\` voturi`, inline: true }
-                        )
-                        .setFooter({ text: '🎮 EUGVRP România • Sistem de Votare', iconURL: guild.iconURL() })
-                        .setTimestamp();
-
-                    await message.edit({ embeds: [updatedEmbed] });
-                }
-            }
-        } catch (e) {
-            console.error('Eroare la actualizarea votului:', e);
-        }
+        // Update embed în timp real
+        await updateVoteEmbed(guild, voteData, voteId);
 
         return interaction.reply({
-            content: '✅ **Ai votat DA!** 🎉 Mulțumim pentru vot!',
+            content: '✅ **Ai votat DA!** 🎉 Votul tău a fost înregistrat. Mulțumim pentru participare!',
             flags: MessageFlags.Ephemeral
         });
     }
 
-    // BUTOANE VOT NU
-    if (customId === 'vote_nu') {
-        const voteEntry = Array.from(votesMap.entries()).find(([k, v]) => v.messageId);
-        if (!voteEntry) {
+    // BUTOANE VOT NU (cu ID dinamic)
+    if (customId.startsWith('vote_nu_')) {
+        const voteId = customId.replace('vote_nu_', '');
+        const voteData = votesMap.get(voteId);
+        
+        if (!voteData) {
             return interaction.reply({
-                content: '❌ **Votul nu mai există.**',
+                content: '❌ **Votul nu mai există sau a expirat.**',
                 flags: MessageFlags.Ephemeral
             });
         }
 
-        const [voteId, voteData] = voteEntry;
-
+        // Verificare dacă a votat deja NU
         if (voteData.nu.includes(user.id)) {
             return interaction.reply({
                 content: '✅ **Ai votat deja NU!** Așteaptă rezultatele.',
@@ -1463,74 +2523,79 @@ async function handleButton(interaction) {
         voteData.nu.push(user.id);
         votesMap.set(voteId, voteData);
 
-        // Update the embed
-        try {
-            const sesiuneChannel = guild.channels.cache.get(CONFIG.channels.sesiune);
-            if (sesiuneChannel && voteData.messageId) {
-                const message = await sesiuneChannel.messages.fetch(voteData.messageId);
-                if (message) {
-                    const updatedEmbed = new EmbedBuilder()
-                        .setTitle('🗳️ ═══════ VOT SESIUNE ROLEPLAY ═══════')
-                        .setDescription(`
-🎮 **O nouă sesiune roleplay se pregătește!**
-
-💬 Sunteți pregătiți pentru acțiune?
-🗳️ Votați mai jos dacă doriți să începem sesiunea!
-
-⚠️ **Votul este anonim - nimeni nu vede cine a votat ce!**
-                        `)
-                        .setColor(CONFIG.colors.vote)
-                        .addFields(
-                            { name: `✅ DA - Sunt pregătit!`, value: `\`${voteData.da.length}\` voturi`, inline: true },
-                            { name: `❌ NU - Nu acum`, value: `\`${voteData.nu.length}\` voturi`, inline: true }
-                        )
-                        .setFooter({ text: '🎮 EUGVRP România • Sistem de Votare', iconURL: guild.iconURL() })
-                        .setTimestamp();
-
-                    await message.edit({ embeds: [updatedEmbed] });
-                }
-            }
-        } catch (e) {
-            console.error('Eroare la actualizarea votului:', e);
-        }
+        // Update embed în timp real
+        await updateVoteEmbed(guild, voteData, voteId);
 
         return interaction.reply({
-            content: '✅ **Ai votat NU!** Vom aștepta mai mulți jucători.',
+            content: '✅ **Ai votat NU!** Votul tău a fost înregistrat. Poate data viitoare!',
             flags: MessageFlags.Ephemeral
         });
     }
 
-    // BUTON VEZI VOTURI
-    if (customId === 'vote_results') {
-        const voteEntry = Array.from(votesMap.entries()).find(([k, v]) => v.messageId);
-        if (!voteEntry) {
+    // BUTON VEZI CINE A VOTAT (doar Session Host)
+    if (customId.startsWith('vote_results_')) {
+        const voteId = customId.replace('vote_results_', '');
+        const voteData = votesMap.get(voteId);
+        
+        if (!voteData) {
             return interaction.reply({
-                content: '❌ **Votul nu mai există.**',
+                content: '❌ **Votul nu mai există sau a expirat.**',
                 flags: MessageFlags.Ephemeral
             });
         }
 
-        const [voteId, voteData] = voteEntry;
+        // Verificare dacă este Session Host
+        if (!hasRole(member, CONFIG.roles.sessionHost)) {
+            return interaction.reply({
+                content: '❌ **ACCES REFUZAT!** Doar Session Host poate vedea cine a votat.\n\n📊 **Rezultate publice:**\n✅ DA: `' + voteData.da.length + '` voturi\n❌ NU: `' + voteData.nu.length + '` voturi',
+                flags: MessageFlags.Ephemeral
+            });
+        }
 
-        const daList = voteData.da.length > 0 ? voteData.da.map(id => `<@${id}>`).join('\n') : 'Nimeni';
-        const nuList = voteData.nu.length > 0 ? voteData.nu.map(id => `<@${id}>`).join('\n') : 'Nimeni';
+        // Creare liste cu votanți
+        const daList = voteData.da.length > 0 
+            ? voteData.da.map((id, index) => `${index + 1}. <@${id}>`).join('\n') 
+            : '*Nimeni nu a votat încă*';
+        const nuList = voteData.nu.length > 0 
+            ? voteData.nu.map((id, index) => `${index + 1}. <@${id}>`).join('\n') 
+            : '*Nimeni nu a votat încă*';
+
+        const totalVotes = voteData.da.length + voteData.nu.length;
+        const daPercent = totalVotes > 0 ? Math.round((voteData.da.length / totalVotes) * 100) : 0;
+        const nuPercent = totalVotes > 0 ? Math.round((voteData.nu.length / totalVotes) * 100) : 0;
 
         const embed = new EmbedBuilder()
-            .setTitle('📊 ═══════ REZULTATE VOT ═══════')
+            .setTitle('📋 ═══════ REZULTATE VOT DETALIATE ═══════')
             .setDescription(`
-🎮 **Rezultatele votului pentru sesiune**
+╔══════════════════════════════════════╗
+   👑 **VIZUALIZARE EXCLUSIVĂ SESSION HOST**
+╚══════════════════════════════════════╝
 
-⚠️ **Doar tu poți vedea aceste rezultate!**
+📊 **Statistici Vot:**
+\`\`\`
+✅ DA:  ${voteData.da.length} voturi (${daPercent}%)
+❌ NU:  ${voteData.nu.length} voturi (${nuPercent}%)
+━━━━━━━━━━━━━━━━━━━━━━━━━
+👥 TOTAL: ${totalVotes} participanți
+\`\`\`
             `)
             .setColor(CONFIG.colors.vote)
             .addFields(
-                { name: `✅ DA (${voteData.da.length})`, value: daList },
-                { name: `❌ NU (${voteData.nu.length})`, value: nuList }
+                { name: `✅ AU VOTAT DA (${voteData.da.length})`, value: daList, inline: true },
+                { name: `❌ AU VOTAT NU (${voteData.nu.length})`, value: nuList, inline: true }
             )
-            .setFooter({ text: '🎮 EUGVRP România' })
+            .setFooter({ text: '🔒 Această informație este vizibilă doar pentru tine', iconURL: guild.iconURL() })
             .setTimestamp();
 
         return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    }
+
+    // Backward compatibility pentru butoanele vechi
+    if (customId === 'vote_da' || customId === 'vote_nu' || customId === 'vote_results') {
+        return interaction.reply({
+            content: '❌ **Acest vot a expirat.** Te rog să aștepți un vot nou.',
+            flags: MessageFlags.Ephemeral
+        });
     }
 
     // BUTON ACCEPTĂ APLICAȚIE
@@ -1574,9 +2639,9 @@ async function handleButton(interaction) {
             `)
             .setColor(getDepartmentColor(department))
             .addFields(
-                { name: '👤 👤 Utilizator', value: `<@${applicantId}>` },
-                { name: '🏢 🏛️ Departament', value: `${getDepartmentEmoji(department)} ${getDepartmentName(department)}` },
-                { name: '✅ 👮 Acceptat de', value: `<@${user.id}>` }
+                { name: '👤 Utilizator', value: `<@${applicantId}>` },
+                { name: '🏢 Departament', value: `${getDepartmentEmoji(department)} ${getDepartmentName(department)}` },
+                { name: '✅ Acceptat de', value: `<@${user.id}>` }
             )
             .setFooter({ text: '🎮 EUGVRP România', iconURL: guild.iconURL() })
             .setTimestamp();
@@ -1622,9 +2687,9 @@ async function handleButton(interaction) {
             `)
             .setColor(CONFIG.colors.error)
             .addFields(
-                { name: '👤 👤 Utilizator', value: `<@${applicantId}>` },
-                { name: '🏢 🏛️ Departament', value: `${getDepartmentEmoji(department)} ${getDepartmentName(department)}` },
-                { name: '❌ 🔒 Respins de', value: `<@${user.id}>` }
+                { name: '👤 Utilizator', value: `<@${applicantId}>` },
+                { name: '🏢 Departament', value: `${getDepartmentEmoji(department)} ${getDepartmentName(department)}` },
+                { name: '❌ Respins de', value: `<@${user.id}>` }
             )
             .setFooter({ text: '🎮 EUGVRP România', iconURL: guild.iconURL() })
             .setTimestamp();
@@ -1672,6 +2737,79 @@ async function handleButton(interaction) {
         } catch (e) {
             // Interaction already replied/deferred
         }
+    }
+}
+
+// Funcție pentru actualizarea embed-ului de vot în timp real
+async function updateVoteEmbed(guild, voteData, voteId) {
+    try {
+        const sesiuneChannel = guild.channels.cache.get(CONFIG.channels.sesiune);
+        if (!sesiuneChannel || !voteData.messageId) return;
+
+        const message = await sesiuneChannel.messages.fetch(voteData.messageId).catch(() => null);
+        if (!message) return;
+
+        const totalVotes = voteData.da.length + voteData.nu.length;
+        const daPercent = totalVotes > 0 ? Math.round((voteData.da.length / totalVotes) * 100) : 0;
+        const nuPercent = totalVotes > 0 ? Math.round((voteData.nu.length / totalVotes) * 100) : 0;
+
+        // Creare bară de progres vizuală
+        const progressBarLength = 10;
+        const daFilled = Math.round((daPercent / 100) * progressBarLength);
+        const nuFilled = Math.round((nuPercent / 100) * progressBarLength);
+        const daBar = '🟩'.repeat(daFilled) + '⬜'.repeat(progressBarLength - daFilled);
+        const nuBar = '🟥'.repeat(nuFilled) + '⬜'.repeat(progressBarLength - nuFilled);
+
+        const updatedEmbed = new EmbedBuilder()
+            .setTitle('🗳️ ═══════ VOT SESIUNE ROLEPLAY ═══════')
+            .setDescription(`
+╔══════════════════════════════════════╗
+   🎮 **O NOUĂ SESIUNE SE PREGĂTEȘTE!**
+╚══════════════════════════════════════╝
+
+📢 **Atenție, jucători!**
+Un Session Host dorește să pornească o sesiune de roleplay!
+
+🤔 **Ești pregătit să intri în joc?**
+Votează mai jos pentru a ne spune părerea ta!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            `)
+            .setColor(CONFIG.colors.vote)
+            .addFields(
+                { name: '✅ DA - Sunt pregătit!', value: `\`\`\`\n🟢 ${voteData.da.length} voturi (${daPercent}%)\n${daBar}\n\`\`\``, inline: true },
+                { name: '❌ NU - Nu acum', value: `\`\`\`\n🔴 ${voteData.nu.length} voturi (${nuPercent}%)\n${nuBar}\n\`\`\``, inline: true },
+                { name: '\u200b', value: '\u200b', inline: true },
+                { name: '📊 Total Participanți', value: `\`\`\`\n👥 ${totalVotes} persoane\n\`\`\``, inline: true },
+                { name: '👑 Inițiat de', value: `<@${voteData.createdBy}>`, inline: true },
+                { name: '⏰ Actualizat', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
+            )
+            .setFooter({ text: '🎮 EUGVRP România • Sistem de Votare | Votul este anonim pentru ceilalți jucători', iconURL: guild.iconURL() })
+            .setTimestamp()
+            .setThumbnail(guild.iconURL({ size: 128 }));
+
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`vote_da_${voteId}`)
+                    .setLabel(`✅ DA (${voteData.da.length})`)
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('🎮'),
+                new ButtonBuilder()
+                    .setCustomId(`vote_nu_${voteId}`)
+                    .setLabel(`❌ NU (${voteData.nu.length})`)
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('⏸️'),
+                new ButtonBuilder()
+                    .setCustomId(`vote_results_${voteId}`)
+                    .setLabel('📋 Vezi cine a votat')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('👀')
+            );
+
+        await message.edit({ embeds: [updatedEmbed], components: [row] });
+    } catch (error) {
+        console.error('Eroare la actualizarea votului:', error);
     }
 }
 
