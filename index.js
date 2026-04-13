@@ -1732,7 +1732,7 @@ Votează mai jos pentru a ne spune părerea ta!
         flags: MessageFlags.Ephemeral
     });
 }
-PARTEA 3/4 - index.js (continuare)
+//PARTEA 3/4 - index.js (continuare)
 // ═══════════════════════════════════════════════════════════════════════════════
 // SISTEM TURE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2419,7 +2419,7 @@ async function handleReload(interaction) {
         });
     }
 }
-PARTEA 4/4 - index.js (ULTIMA PARTE)
+//PARTEA 4/4 - index.js (ULTIMA PARTE)
 // ═══════════════════════════════════════════════════════════════════════════════
 // HANDLER BUTOANE
 // ═══════════════════════════════════════════════════════════════════════════════
